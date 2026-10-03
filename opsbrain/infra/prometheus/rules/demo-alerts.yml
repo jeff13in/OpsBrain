@@ -1,0 +1,11 @@
+groups:
+  - name: opsbrain-demo
+    rules:
+      - alert: DemoPodRestarting
+        expr: kube_pod_container_status_restarts_total{namespace="demo"} > 0
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Demo pod has restarted"
+          description: "The demo worker pod reports one or more container restarts."

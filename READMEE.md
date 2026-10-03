@@ -90,11 +90,9 @@ per call, GitHub 10s per request.
 - A Google AI Studio API key (free: https://aistudio.google.com/apikey)
 - Optional: AWS credentials / kubeconfig (Infra Agent), `GITHUB_TOKEN` + `GITHUB_REPO` (Code Agent)
 
-> **Fresh clone warning.** `docs/` (runbooks), `database/init.sql`,
-> `infra/alertmanager/`, `infra/grafana/` and `infra/prometheus/rules/` are
-> gitignored on this branch and come from Rifat's branch. Copy them in before
-> starting the stack, or Postgres won't get its pgvector schema and the RAG agent
-> will have nothing to ingest.
+> The runbooks (`docs/`), `database/init.sql` and the Alertmanager, Grafana and
+> Prometheus-rules configs come from Rifat's branch and are tracked in git as of
+> `rifat-updated`, so a fresh clone has everything `docker-compose.yml` mounts.
 
 ### 1. Configure
 ```bash

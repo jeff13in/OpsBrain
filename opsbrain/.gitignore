@@ -26,13 +26,6 @@ infra/terraform/terraform.tfstate.backup
 infra/terraform/terraform.tfvars
 *.tfplan
 
-# Rifat's portions (RAG agent + docs + monitoring)
-docs/
-database/
-infra/alertmanager/
-infra/grafana/
-infra/prometheus/rules/
-
 # Local notes
 memory.md
 

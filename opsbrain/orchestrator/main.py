@@ -1,24 +1,37 @@
-"""FastAPI entry point for the OpsBrain Orchestrator — Stage 2.
+"""FastAPI entry point for the OpsBrain Orchestrator.
 
 The Orchestrator is the single public-facing API. Users (CLI or Slack)
-send questions here; it routes them to the right agents, collects answers,
-and returns a unified response.
-
-Stage 1: The /query endpoint routes every question directly to the RAG agent.
-Stage 2: Replace with full LangGraph fan-out once all agents are live.
+send questions here; it routes them to the right agents in parallel,
+collects answers, and returns one AskResponse (see orchestrator/CONTRACT.md).
 """
 
-import httpx
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from __future__ import annotations
 
-app = FastAPI(title="OpsBrain Orchestrator", version="0.1.0")
+import logging
+import uuid
+from functools import lru_cache
 
-RAG_AGENT_URL = "http://rag-agent:8001"
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+from orchestrator.graph import build_orchestrator_graph
+from orchestrator.llm import get_llm
+from orchestrator.memory import SessionMemory
+from shared.models import AskRequest, AskResponse
+
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="OpsBrain Orchestrator", version="0.2.0")
+
+memory = SessionMemory()
 
 
-class AskRequest(BaseModel):
-    question: str
+@lru_cache(maxsize=1)
+def get_graph():
+    llm = get_llm()
+    if llm is None:
+        logger.warning("GOOGLE_API_KEY not set — routing by keywords, no LLM synthesis.")
+    return build_orchestrator_graph(llm=llm)
 
 
 @app.get("/health")
@@ -26,17 +39,33 @@ def health():
     return {"status": "ok", "agent": "orchestrator"}
 
 
-@app.post("/ask")
-def ask(request: AskRequest):
-    """Route the question through the agent graph and return a unified answer."""
-    # Stage 1: forward directly to RAG agent
-    try:
-        resp = httpx.post(
-            f"{RAG_AGENT_URL}/query",
-            json={"question": request.question},
-            timeout=60,
-        )
-        resp.raise_for_status()
-        return resp.json()
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"RAG agent error: {exc}")
+@app.post("/ask", response_model=AskResponse)
+async def ask(request: AskRequest):
+    """Route the question through the agent graph and return a unified answer.
+
+    200 when at least one agent answered (status ok/partial), 502 when none did.
+    """
+    request_id = uuid.uuid4().hex
+    out: dict = await get_graph().ainvoke({
+        "request_id": request_id,
+        "session_id": request.session_id,
+        "question": request.question,
+        "history": memory.history(request.session_id),
+        "results": [],
+    })
+    # Parallel branches append in completion order; report them in routing order.
+    order = {name: i for i, name in enumerate(out["routing"].agents)}
+    results = sorted(out["results"], key=lambda r: order.get(r.agent, len(order)))
+    response = AskResponse(
+        request_id=request_id,
+        session_id=request.session_id,
+        question=request.question,
+        status=out["status"],
+        answer=out["final_answer"],
+        sources=out["sources"],
+        routing=out["routing"],
+        results=results,
+    )
+    if response.status != "error":
+        memory.append(request.session_id, request.question, response.answer)
+    return JSONResponse(status_code=502 if response.status == "error" else 200, content=response.model_dump(mode="json"))

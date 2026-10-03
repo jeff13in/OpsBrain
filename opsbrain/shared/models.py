@@ -4,9 +4,9 @@ Define every cross-agent data shape here so each microservice speaks
 the same language without duplicating model code.
 """
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # ── RAG Agent ────────────────────────────────────────────────────────────────
 
@@ -47,3 +47,88 @@ class AgentMessage(BaseModel):
     from_agent: str
     to_agent: str
     payload: dict[str, Any]
+
+
+# ── Orchestrator contract (OPU-42) ────────────────────────────────────────────
+# The shapes every agent and the Orchestrator agree on. See
+# orchestrator/CONTRACT.md for the routing and aggregation rules around them.
+
+AgentName = Literal["rag", "monitoring", "infra", "code"]
+
+AgentStatus = Literal["ok", "error", "timeout"]
+"""Outcome of a single agent call."""
+
+ErrorCode = Literal["timeout", "unavailable", "bad_request", "agent_error", "invalid_response"]
+"""Why an agent call failed.
+
+timeout          — no reply within the per-agent deadline          (retryable)
+unavailable      — connection refused / DNS failure / HTTP 503     (retryable)
+bad_request      — agent rejected the input (HTTP 4xx)             (not retryable)
+agent_error      — agent crashed (HTTP 5xx other than 503)         (not retryable)
+invalid_response — 2xx, but the body didn't match AgentReply       (not retryable)
+"""
+
+OverallStatus = Literal["ok", "partial", "error"]
+"""ok = every routed agent succeeded; partial = at least one did; error = none did."""
+
+
+class AgentQuery(BaseModel):
+    """What the Orchestrator POSTs to an agent's /query endpoint."""
+    question: str = Field(min_length=1, max_length=2000)
+    request_id: str
+
+
+class AgentReply(BaseModel):
+    """The minimum every agent's /query must return on success (HTTP 2xx).
+
+    Agents may return extra fields (RAG adds `grounded`, `retrieved_chunks`, …);
+    they are kept in AgentResult.data rather than dropped.
+    """
+    answer: str
+    sources: list[str] = []
+    data: dict[str, Any] | None = None
+
+
+class AgentError(BaseModel):
+    code: ErrorCode
+    message: str
+    retryable: bool
+
+
+class AgentResult(BaseModel):
+    """One agent's outcome, normalized by the Orchestrator. Never raised — always returned."""
+    agent: AgentName
+    status: AgentStatus
+    answer: str | None = None
+    sources: list[str] = []
+    data: dict[str, Any] | None = None
+    error: AgentError | None = None
+    latency_ms: int = 0
+
+
+class RoutingDecision(BaseModel):
+    agents: list[AgentName] = Field(min_length=1)
+    method: Literal["llm", "keyword", "fallback"]
+    reason: str
+
+
+class AskRequest(BaseModel):
+    """Public request to the Orchestrator's /ask endpoint."""
+    question: str = Field(min_length=1, max_length=2000)
+    session_id: str | None = None
+
+
+class AskResponse(BaseModel):
+    """Public response from the Orchestrator's /ask endpoint.
+
+    Returned with HTTP 200 for status ok/partial and 502 for status error,
+    so the body shape is the same either way.
+    """
+    request_id: str
+    session_id: str | None = None
+    question: str
+    status: OverallStatus
+    answer: str
+    sources: list[str]
+    routing: RoutingDecision
+    results: list[AgentResult]

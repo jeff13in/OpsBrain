@@ -270,3 +270,5 @@ Put a `.md` or `.txt` file in `opsbrain/docs/` and run the ingest command again.
 - [~] **Stage 2:** Orchestrator ✅ and all four agents ✅; Monitoring `/query` and Kafka fan-out still to do
 - [ ] **Stage 3:** Terraform deploy to AWS EKS, ArgoCD GitOps
 - [ ] **Stage 4:** Prometheus/Grafana dashboards for the agents, Slack integration, CLI tool
+
+.

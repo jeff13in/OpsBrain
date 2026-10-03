@@ -1,3 +1,3 @@
-# DevOps
+# OpsBrain
 
 Personal DevOps repository.

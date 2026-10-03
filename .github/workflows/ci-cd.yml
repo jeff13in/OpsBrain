@@ -58,7 +58,7 @@ jobs:
         run: ruff check agents/ orchestrator/ shared/
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short || echo "No tests yet — skipping"
+        run: pytest tests/ -v --tb=short
 
   # ── Stage 2: Build check (PR merge gate, no push) ──────────────────────────
   build-check:

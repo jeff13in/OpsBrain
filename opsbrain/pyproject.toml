@@ -14,5 +14,6 @@ ignore = ["SIM117"]
 [tool.pytest.ini_options]
 # tests/ imports `rag.*` / `monitoring.*` (Rifat's own package names, matching his
 # branch's layout). Those packages live under agents/ here, so add it to the path
-# rather than rewriting his import statements.
-pythonpath = ["agents"]
+# rather than rewriting his import statements. "." makes `shared.*`, `orchestrator.*`
+# and `agents.*` importable under bare `pytest` (as CI runs it), not only `python -m pytest`.
+pythonpath = [".", "agents"]

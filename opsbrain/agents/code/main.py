@@ -70,7 +70,12 @@ def health() -> HealthResponse:
 
 @app.post("/query")
 def query(request: QueryRequest) -> dict[str, Any]:
-    return get_agent().ask(request.question)
+    """Orchestrator entry point. Failures return CodeClientError.status_code (503 retryable,
+    4xx bad input, 500 misconfiguration) — never a 200 with the error as the answer."""
+    try:
+        return get_agent().ask(request.question)
+    except CodeClientError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.get("/pulls", response_model=PullRequestListResponse)
@@ -81,7 +86,7 @@ def list_pulls(
     try:
         return PullRequestListResponse(**get_agent().list_pull_requests(state=state, limit=limit))
     except CodeClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.get("/pulls/{number}")
@@ -89,7 +94,7 @@ def get_pull(number: int) -> dict[str, Any]:
     try:
         return get_agent().get_pull_request(number)
     except CodeClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.get("/pulls/{number}/status")
@@ -97,7 +102,7 @@ def get_pull_status(number: int) -> dict[str, Any]:
     try:
         return get_agent().get_pull_request_status(number)
     except CodeClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.get("/actions/runs", response_model=WorkflowRunListResponse)
@@ -111,7 +116,7 @@ def list_runs(
             **get_agent().list_workflow_runs(branch=branch, status=status, limit=limit)
         )
     except CodeClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.get("/actions/summary")
@@ -119,7 +124,7 @@ def actions_summary(branch: str | None = Query(default=None)) -> dict[str, Any]:
     try:
         return get_agent().summarize_ci(branch=branch)
     except CodeClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.get("/commits", response_model=CommitListResponse)
@@ -130,7 +135,7 @@ def list_commits(
     try:
         return CommitListResponse(**get_agent().list_commits(branch=branch, limit=limit))
     except CodeClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.get("/commits/{sha}")
@@ -138,7 +143,7 @@ def get_commit(sha: str) -> dict[str, Any]:
     try:
         return get_agent().get_commit(sha)
     except CodeClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.get("/deployments", response_model=DeploymentListResponse)
@@ -151,7 +156,7 @@ def list_deployments(
             **get_agent().list_deployments(environment=environment, limit=limit)
         )
     except CodeClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.get("/deployments/{deployment_id}/status")
@@ -159,7 +164,7 @@ def get_deployment_status(deployment_id: int) -> dict[str, Any]:
     try:
         return get_agent().get_deployment_status(deployment_id)
     except CodeClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.post("/actions/runs/{run_id}/rerun")
@@ -169,7 +174,7 @@ def rerun_workflow(
     try:
         return get_agent().rerun_workflow(run_id, failed_jobs_only=failed_jobs_only)
     except CodeClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @app.post("/actions/workflows/{workflow}/dispatch")
@@ -179,4 +184,4 @@ def trigger_workflow(workflow: str, request: WorkflowDispatchRequest) -> dict[st
             workflow, ref=request.ref, inputs=request.inputs
         )
     except CodeClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

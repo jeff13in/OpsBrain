@@ -28,7 +28,17 @@ class CodeConfig:
 
 
 class CodeClientError(RuntimeError):
-    """Raised when GitHub cannot be queried successfully."""
+    """Raised when GitHub cannot be queried successfully.
+
+    `status_code` is what the HTTP layer returns (see orchestrator/CONTRACT.md):
+    503 (default) when GitHub is unreachable, slow, erroring, or rate-limiting us;
+    404/400 when the request names something that doesn't exist or is invalid;
+    500 when the token/repo config is missing or lacks permission.
+    """
+
+    def __init__(self, message: str, *, status_code: int = 503) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class CodeAgent:
@@ -224,70 +234,66 @@ class CodeAgent:
     # ── Question routing ─────────────────────────────────────────────────
 
     def ask(self, question: str) -> dict[str, Any]:
-        """Best-effort natural-language entry point used by the orchestrator's /query contract."""
-        if not self.config.github_repo:
-            return {
-                "answer": "No GitHub repo is configured (set GITHUB_REPO=owner/repo).",
-                "sources": [],
-            }
+        """Best-effort natural-language entry point used by the orchestrator's /query contract.
 
+        Raises CodeClientError when GitHub can't be queried, so /query returns a
+        non-2xx status instead of an error message dressed up as an answer.
+        """
+        self._require_repo()
         q = question.lower()
-        try:
-            number_match = re.search(r"#?(\d+)", question)
-            if number_match and ("pr" in q or "pull request" in q or "#" in question):
-                number = int(number_match.group(1))
-                status = self.get_pull_request_status(number)
-                return {
-                    "answer": (
-                        f"PR #{number} CI status: {status['overall']} "
-                        f"({', '.join(f'{k}: {v}' for k, v in status['breakdown'].items()) or 'no check runs'})."
-                    ),
-                    "sources": [f"github:pull/{number}"],
-                    "data": status,
-                }
-            if "commit" in q:
-                data = self.list_commits()
-                lines = [f"{c['sha'][:7]} {c['message']}" for c in data["commits"][:5]]
-                answer = (
-                    f"{data['count']} recent commit(s) — " + "; ".join(lines)
-                    if lines
-                    else "No commits found."
-                )
-                return {"answer": answer, "sources": ["github:commits"], "data": data}
-            if "deploy" in q:
-                data = self.list_deployments()
-                lines = [f"{d['environment']}@{d['sha'][:7]}" for d in data["deployments"][:5]]
-                answer = (
-                    f"{data['count']} recent deployment(s) — " + "; ".join(lines)
-                    if lines
-                    else "No deployments found."
-                )
-                return {"answer": answer, "sources": ["github:deployments"], "data": data}
-            if "ci" in q or "pipeline" in q or "workflow" in q or "build" in q or "action" in q:
-                summary = self.summarize_ci()
-                lines = [
-                    f"{wf['workflow_name']}: {wf['conclusion'] or wf['status']}"
-                    for wf in summary["workflows"]
-                ]
-                answer = (
-                    "Latest workflow runs — " + "; ".join(lines)
-                    if lines
-                    else "No workflow runs found."
-                )
-                return {"answer": answer, "sources": ["github:actions/runs"], "data": summary}
+        number_match = re.search(r"#?(\d+)", question)
+        if number_match and ("pr" in q or "pull request" in q or "#" in question):
+            number = int(number_match.group(1))
+            status = self.get_pull_request_status(number)
+            return {
+                "answer": (
+                    f"PR #{number} CI status: {status['overall']} "
+                    f"({', '.join(f'{k}: {v}' for k, v in status['breakdown'].items()) or 'no check runs'})."
+                ),
+                "sources": [f"github:pull/{number}"],
+                "data": status,
+            }
+        if "commit" in q:
+            data = self.list_commits()
+            lines = [f"{c['sha'][:7]} {c['message']}" for c in data["commits"][:5]]
+            answer = (
+                f"{data['count']} recent commit(s) — " + "; ".join(lines)
+                if lines
+                else "No commits found."
+            )
+            return {"answer": answer, "sources": ["github:commits"], "data": data}
+        if "deploy" in q:
+            data = self.list_deployments()
+            lines = [f"{d['environment']}@{d['sha'][:7]}" for d in data["deployments"][:5]]
+            answer = (
+                f"{data['count']} recent deployment(s) — " + "; ".join(lines)
+                if lines
+                else "No deployments found."
+            )
+            return {"answer": answer, "sources": ["github:deployments"], "data": data}
+        if "ci" in q or "pipeline" in q or "workflow" in q or "build" in q or "action" in q:
+            summary = self.summarize_ci()
+            lines = [
+                f"{wf['workflow_name']}: {wf['conclusion'] or wf['status']}"
+                for wf in summary["workflows"]
+            ]
+            answer = (
+                "Latest workflow runs — " + "; ".join(lines)
+                if lines
+                else "No workflow runs found."
+            )
+            return {"answer": answer, "sources": ["github:actions/runs"], "data": summary}
 
-            # default: open PR count
-            pulls = self.list_pull_requests(state="open")
-            answer = f"{pulls['count']} open pull request(s) on {pulls['repo']}."
-            return {"answer": answer, "sources": ["github:pulls"], "data": pulls}
-        except CodeClientError as exc:
-            return {"answer": str(exc), "sources": []}
+        # default: open PR count
+        pulls = self.list_pull_requests(state="open")
+        answer = f"{pulls['count']} open pull request(s) on {pulls['repo']}."
+        return {"answer": answer, "sources": ["github:pulls"], "data": pulls}
 
     # ── internals ─────────────────────────────────────────────────────────
 
     def _require_repo(self) -> None:
         if not self.config.github_repo:
-            raise CodeClientError("GITHUB_REPO is not configured (expected 'owner/repo').")
+            raise CodeClientError("GITHUB_REPO is not configured (expected 'owner/repo').", status_code=500)
 
     def _normalize_pr(self, pr: dict[str, Any], *, detailed: bool = False) -> dict[str, Any]:
         base = {
@@ -376,9 +382,27 @@ class CodeAgent:
         except HTTPError as exc:
             message = exc.read().decode("utf-8", errors="ignore").strip()
             raise CodeClientError(
-                f"{method} {url} failed with HTTP {exc.code}: {message or exc.reason}"
+                f"{method} {url} failed with HTTP {exc.code}: {message or exc.reason}",
+                status_code=_status_for_github_error(exc),
             ) from exc
         except URLError as exc:
             raise CodeClientError(f"Could not reach GitHub at {url}: {exc.reason}") from exc
+        except TimeoutError as exc:  # read timeout: urlopen only wraps connect timeouts in URLError
+            raise CodeClientError(
+                f"GitHub did not respond within {self.config.timeout_seconds:g}s for {url}."
+            ) from exc
         except json.JSONDecodeError as exc:
             raise CodeClientError(f"GitHub returned invalid JSON for {url}.") from exc
+
+
+def _status_for_github_error(exc: HTTPError) -> int:
+    """Map a GitHub HTTP error onto the status our own API returns."""
+    if exc.code == 429 or (exc.code == 403 and exc.headers.get("x-ratelimit-remaining") == "0"):
+        return 503  # rate limited — retry later
+    if exc.code in (401, 403):
+        return 500  # bad/missing token or no access to the repo — config problem
+    if exc.code == 404:
+        return 404  # PR / commit / run / workflow doesn't exist
+    if 400 <= exc.code < 500:
+        return 400  # e.g. 422 on an invalid workflow dispatch
+    return 503  # GitHub 5xx

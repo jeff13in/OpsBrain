@@ -91,9 +91,12 @@ recently used are evicted). Failed (`error`) turns aren't remembered.
 ## Known gaps in the agents (to fix before OPU-44 / OPU-50)
 
 1. **Monitoring has no `/query` endpoint.** It needs one that returns `AgentReply` (Rifat's code).
-2. **Infra and Code `ask()` return errors as 200s.** `InfraClientError`/`CodeClientError`
-   come back as `{"answer": "<error text>"}`, so the Orchestrator counts them as successes.
-   They should raise 503 instead (OPU-62).
+2. ~~**Infra and Code `ask()` return errors as 200s.**~~ Fixed in OPU-62. `/query` now returns
+   503 when the backend is down, slow or throttled, 404/400 for things that don't exist or bad
+   input, and 500 when credentials, permissions or config are missing. Backend calls are bounded
+   so each agent replies within the Orchestrator's 30s budget: AWS 5s to connect, 20s to read,
+   2 attempts; Kubernetes 20s per request; GitHub 10s per request; Infra's health summary runs
+   its 6 checks at the same time.
 3. **RAG's `/query` requires `question` ≥ 5 characters.** Shorter questions get a 422, which maps to `bad_request`.
 4. **Memory is per process.** `k8s/orchestrator.yaml` runs 2 replicas, so a session's next
    turn can land on a pod that never saw it. This needs sticky sessions or a shared store

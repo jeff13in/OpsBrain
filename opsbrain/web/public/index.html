@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#111513">
+    <meta name="description" content="OpsBrain engineer workspace. Local UI foundation; no live operational data or connected backend.">
+    <title>OpsBrain — Engineer workspace</title>
+    <link rel="icon" href="./mark.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./styles.css">
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Workspace sidebar">
+        <a class="brand" href="#/home" aria-label="OpsBrain home"><img src="./mark.svg" width="34" height="34" alt=""><span>opsbrain<span class="brand-dot">.</span></span></a>
+        <div class="workspace-label"><span class="workspace-avatar">OB</span><div>Engineer workspace<small>Two-engineer prototype</small></div></div>
+        <button class="menu-toggle button secondary" type="button" aria-controls="workspace-navigation" aria-expanded="false">Menu <span aria-hidden="true">☰</span></button>
+        <nav id="workspace-navigation" aria-label="Main navigation"></nav>
+        <div class="sidebar-bottom"><p class="eyebrow">BUILT FOR CONTEXT</p><p>Four specialists.<br>One clear picture.</p><a href="#/components" class="kit-link">Explore the interface kit <span aria-hidden="true">↗</span></a><small class="version">FOUNDATION / OPU-84</small></div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar"><p>Workspace <span aria-hidden="true">/</span> <span id="breadcrumb">Overview</span></p><div class="topbar-right"><span class="prototype-label">Local prototype</span><span class="engineer-avatar" aria-label="Engineer workspace, no account session">OB</span></div></header>
+        <main id="main" tabindex="-1"></main>
+        <footer class="workspace-footer"><span>Designed for the people behind the uptime.</span><span>No backend connected · Read-only foundation</span></footer>
+      </div>
+    </div>
+    <p id="announcement" class="sr-only" role="status" aria-live="polite"></p>
+    <noscript><p class="noscript-message">JavaScript is needed for this local interface preview. No backend has been connected.</p></noscript>
+  </body>
+</html>

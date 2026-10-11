@@ -12,6 +12,9 @@ and the orchestrator/agent contract is [`opsbrain/orchestrator/CONTRACT.md`](ops
 Cycle 3 handoff: [async architecture](opsbrain/architecture/async-integration.md)
 and [OPU-52 review / Week 4 limitations](opsbrain/validation/OPU-52.md).
 
+Website foundation: [local two-engineer UI and frontend commands](opsbrain/web/README.md).
+This is a local-only foundation; hosted preview/access protection is OPU-91.
+
 ### Branches
 
 | Branch | What it is |

@@ -262,6 +262,20 @@ which belong to OPU-91; no production authentication is implemented here.
 Automated local HTTP integration uses a contract-compatible test backend. Actual
 backend/model connectivity and browser visual/keyboard QA remain to be verified.
 
+## Interface refinements
+
+Small UX improvements inside the existing demo/live architecture; they do
+not replace the OPU-92–94 live-data work:
+
+- Chat composers show a live character count (`n / 2000`) and submit with
+  Cmd/Ctrl+Enter in addition to the submit button.
+- History has a client-side filter box that narrows the saved-conversation
+  list and reports the filtered count (`shown of total / 20`).
+- The live Overview shows the real API connection status message and
+  whether a live session is active, instead of two bare links.
+- The demo monitoring error state offers a Reset demo preview button that
+  selects the populated fixture, matching the dashboard error state.
+
 ## Next website sprints
 
 The reviewed backlog, dependencies and acceptance criteria are in the

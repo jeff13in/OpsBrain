@@ -42,7 +42,7 @@ export function createApi({ request = fetch, onChange = () => {}, sessionId = ()
     state = { mode, pending: false, message: '', monitoring: null };
   }
   return {
-    snapshot: () => structuredClone(state),
+    snapshot: () => structuredClone({ ...state, sessionActive: session !== null }),
     newSession() {
       controller.abort(); controller = new AbortController(); generation++;
       state.pending = false; state.monitoring = null;

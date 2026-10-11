@@ -18,6 +18,7 @@ const api = createApi({ onChange() {
 const history = createHistory();
 let activeHistoryId = null;
 let restoringHistory = false;
+let historyFilter = '';
 const chat = createChat({ reply: (scenario, question) => chat.snapshot().mode === 'live' ? api.ask(question) : demoReply(scenario), onChange() {
   const state = chat.snapshot();
   if (state.mode !== 'live' && !state.pending && !state.validation && state.turns.length && !restoringHistory) {
@@ -52,9 +53,16 @@ const monitoring = createMonitoring({ onChange() {
 
 function render(moveFocus = false) {
   const route = routeFromHash(window.location.hash);
+  if (route !== 'history') historyFilter = '';
   if (activeHistoryId && !history.get(activeHistoryId)) { activeHistoryId = null; chat.clear(); }
   monitoring.setActive(route === 'monitoring' && api.snapshot().mode === 'demo' && !document.hidden);
-  const page = renderPage(route, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState: history.snapshot(), connectionState: api.snapshot() });
+  let historyState = history.snapshot();
+  if (route === 'history') {
+    const total = historyState.records.length;
+    const records = historyFilter ? historyState.records.filter(record => record.turns[0].question.toLowerCase().includes(historyFilter.toLowerCase())) : historyState.records;
+    historyState = { ...historyState, records, total };
+  }
+  const page = renderPage(route, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState, historyFilter, connectionState: api.snapshot() });
   nav.innerHTML = navigation(route);
   // Renderers contain trusted templates; all dynamic text is escaped in ui.js.
   main.innerHTML = page.html;
@@ -64,19 +72,22 @@ function render(moveFocus = false) {
   toggle.setAttribute('aria-expanded', 'false');
   nav.classList.remove('is-open');
   if (moveFocus) main.focus();
-  if (route === 'dashboard' && moveFocus) {
+  if (route === 'dashboard') {
     document.querySelector('#connect-live')?.addEventListener('click', () => {
-    activeHistoryId = null; monitoring.setActive(false); chat.setMode('live'); void api.connect();
-  });
-  for (const [id, mode] of [['use-demo', 'demo'], ['disconnect-api', 'disconnected']]) {
-    document.getElementById(id)?.addEventListener('click', () => {
-      activeHistoryId = null; monitoring.setActive(false); api.disconnect(mode); chat.setMode(mode === 'demo' ? 'demo' : 'live');
+      activeHistoryId = null; monitoring.setActive(false); chat.setMode('live'); void api.connect();
     });
+    for (const [id, mode] of [['use-demo', 'demo'], ['disconnect-api', 'disconnected']]) {
+      document.getElementById(id)?.addEventListener('click', () => {
+        activeHistoryId = null; monitoring.setActive(false); api.disconnect(mode); chat.setMode(mode === 'demo' ? 'demo' : 'live');
+      });
+    }
+    if (moveFocus) {
+      const stateSelect = document.querySelector('#demo-state');
+      stateSelect?.focus();
+      if (stateSelect) document.querySelector('#announcement').textContent = `Dashboard preview: ${stateSelect.selectedOptions[0].textContent}. Backend disconnected.`;
+    }
   }
   document.querySelector('#live-monitoring-refresh')?.addEventListener('click', () => { void api.refreshMonitoring(); });
-  document.querySelector('#demo-state')?.focus();
-    document.querySelector('#announcement').textContent = `Dashboard preview: ${document.querySelector('#demo-state').selectedOptions[0].textContent}. Backend disconnected.`;
-  }
   const section = landingSectionFromHash(window.location.hash);
   if (section) {
     const target = document.getElementById(section);
@@ -101,6 +112,27 @@ function render(moveFocus = false) {
       chat.clear();
     }
     void chat.submit(form.get('question'), form.get('scenario'));
+  });
+  document.querySelector('#chat-question')?.addEventListener('input', event => {
+    const counter = document.querySelector('#chat-count');
+    if (counter) counter.textContent = `${event.currentTarget.value.length} / 2000`;
+  });
+  document.querySelector('#chat-question')?.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      document.querySelector('#chat-form')?.requestSubmit();
+    }
+  });
+  const filterInput = document.querySelector('#history-filter');
+  filterInput?.addEventListener('input', event => {
+    historyFilter = event.currentTarget.value.trim();
+    render();
+    const input = document.querySelector('#history-filter');
+    input?.focus();
+    input?.setSelectionRange?.(input.value.length, input.value.length);
+  });
+  document.querySelector('#monitoring-reset')?.addEventListener('click', () => {
+    void monitoring.select('populated', document.querySelector('#monitoring-range')?.value || '15m');
   });
   document.querySelector('#clear-chat')?.addEventListener('click', () => { activeHistoryId = null; api.newSession(); chat.clear(); });
   document.querySelectorAll('[data-open-history]').forEach(button => button.addEventListener('click', () => {

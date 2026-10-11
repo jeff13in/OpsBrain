@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from monitoring.agent import MonitoringAgent, MonitoringClientError
+from shared.observability import instrument_app
 
 app = FastAPI(
     title="OpsBrain Monitoring Agent",
@@ -19,6 +20,7 @@ app = FastAPI(
         "application health."
     ),
 )
+instrument_app(app, "monitoring-agent")
 
 
 class HealthResponse(BaseModel):

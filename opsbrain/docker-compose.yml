@@ -80,6 +80,32 @@ services:
         condition: service_healthy
     profiles: [full]
 
+  # Central log storage (7-day local retention) and Docker log collection.
+  loki:
+    image: grafana/loki:3.2.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infra/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    profiles: [full]
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/promtail/promtail.yml"]
+    volumes:
+      - ./infra/promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - promtail_data:/var/lib/promtail
+    depends_on:
+      loki:
+        condition: service_started
+    profiles: [full]
+
   # ── Infra Agent (Stage 2) ───────────────────────────────────────────────────
   infra-agent:
     build:
@@ -162,6 +188,8 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
+      loki:
+        condition: service_started
     profiles: [full]
 
   # ── Demo metrics exporter (fake kube-state-metrics for the demo alert) ───────
@@ -197,3 +225,5 @@ volumes:
   kafka_data:
   prometheus_data:
   grafana_data:
+  loki_data:
+  promtail_data:

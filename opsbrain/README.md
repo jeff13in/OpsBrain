@@ -30,6 +30,10 @@ directory.
 
 ---
 
+> Production observability (Prometheus metrics, Grafana dashboards, Loki logs,
+> alerts, Kubernetes/Helm deployment, and runbooks) is documented in
+> [`docs/observability.md`](docs/observability.md).
+
 ## 1. Setup and service management
 
 ### Prerequisites
@@ -1211,7 +1215,7 @@ opsbrain/
 - [x] CI pipeline — lint, test, build, and publish images to GHCR (see the repo-root `.github/workflows/ci-cd.yml`); the `deploy` stage's working-directory bug is fixed, though it still can't succeed end-to-end until the next item below is done
 - [ ] Orchestrator multi-agent routing and answer synthesis (`router.py`/`graph.py` are stubs)
 - [ ] Wiring any agent to actually publish/consume through `shared/kafka_client.py` — the client itself works, nothing calls it yet
-- [ ] `/metrics` endpoints on the agents themselves (Prometheus currently scrapes them into "down")
+- [x] `/metrics` endpoints, Grafana dashboards, Loki logging, and alert rules (OPU-56)
 - [ ] Kubeconfig mounting for the Infra Agent (§4, Limitation 2)
 - [ ] Terraform CLI installed in the Infra Agent's image (§4, Limitation 3)
 - [ ] Automated test coverage for the Code Agent, and for the Infra Agent's Kubernetes-side methods (AWS-side is covered via `moto`)

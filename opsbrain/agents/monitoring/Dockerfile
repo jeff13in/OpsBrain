@@ -5,8 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir fastapi uvicorn pydantic
+RUN pip install --no-cache-dir fastapi uvicorn pydantic prometheus-client
 
+COPY shared/ ./shared/
 COPY agents/monitoring/*.py ./monitoring/
 
 EXPOSE 8002

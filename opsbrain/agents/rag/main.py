@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from rag.agent import AgentResponse, RAGAgent
+from shared.observability import instrument_app
 from rag.ingestor import IngestionResult, PgVectorIngestor
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ app = FastAPI(
     version="0.1.0",
     description="Retrieve runbook context from pgvector and answer DevOps questions.",
 )
+instrument_app(app, "rag-agent")
 
 
 class QueryRequest(BaseModel):

@@ -1,0 +1,85 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: opsbrain-services
+  namespace: opsbrain
+  labels:
+    app.kubernetes.io/part-of: opsbrain
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: [opsbrain]
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [orchestrator, rag-agent, monitoring-agent, infra-agent, code-agent]
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_service_label_app]
+          targetLabel: service
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: opsbrain-alerts
+  namespace: opsbrain
+  labels:
+    app.kubernetes.io/part-of: opsbrain
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: opsbrain-availability
+      rules:
+        - alert: OpsBrainServiceUnavailable
+          expr: up{namespace="opsbrain",service=~"orchestrator|.*-agent"} == 0
+          for: 2m
+          labels: {severity: critical}
+          annotations:
+            summary: "OpsBrain service {{ $labels.service }} is unavailable"
+            description: "Prometheus has failed to scrape {{ $labels.instance }} for more than 2 minutes."
+            runbook_url: "docs/observability.md#service-unavailable"
+        - alert: OpsBrainHighHttpErrorRate
+          expr: sum by (service) (rate(opsbrain_http_requests_total{status_code=~"5.."}[5m])) / clamp_min(sum by (service) (rate(opsbrain_http_requests_total[5m])), 0.001) > 0.05
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: "High HTTP error rate for {{ $labels.service }}"
+            description: "More than 5% of requests have returned 5xx for 10 minutes."
+            runbook_url: "docs/observability.md#high-http-error-rate"
+        - alert: OpsBrainPrometheusScrapeFailure
+          expr: increase(prometheus_target_scrapes_exceeded_sample_limit_total[10m]) > 0 or increase(prometheus_target_scrapes_sample_duplicate_timestamp_total[10m]) > 0
+          for: 5m
+          labels: {severity: warning, service: prometheus}
+          annotations:
+            summary: "Prometheus is rejecting scraped samples"
+            description: "A target exceeded its sample limit or returned duplicate timestamps in the last 10 minutes."
+            runbook_url: "docs/observability.md#prometheus-scrape-failure"
+        - alert: OpsBrainHighRequestLatency
+          expr: histogram_quantile(0.95, sum by (service, le) (rate(opsbrain_http_request_duration_seconds_bucket[10m]))) > 2
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: "High p95 request latency for {{ $labels.service }}"
+            description: "The p95 HTTP latency has exceeded 2 seconds for 10 minutes."
+            runbook_url: "docs/observability.md#high-latency"
+        - alert: OpsBrainRepeatedAgentFailures
+          expr: sum by (agent) (increase(opsbrain_agent_executions_total{status=~"error|timeout"}[10m])) >= 3
+          for: 5m
+          labels: {severity: critical, service: orchestrator}
+          annotations:
+            summary: "Repeated {{ $labels.agent }} agent failures"
+            description: "At least 3 failed executions were observed for this agent in 10 minutes."
+            runbook_url: "docs/observability.md#repeated-agent-failures"
+        - alert: OpsBrainHighAgentLatency
+          expr: histogram_quantile(0.95, sum by (agent, le) (rate(opsbrain_agent_execution_duration_seconds_bucket[10m]))) > 10
+          for: 10m
+          labels: {severity: warning, service: orchestrator}
+          annotations:
+            summary: "High p95 execution latency for {{ $labels.agent }} agent"
+            description: "Agent execution p95 has exceeded 10 seconds for 10 minutes."
+            runbook_url: "docs/observability.md#high-latency"

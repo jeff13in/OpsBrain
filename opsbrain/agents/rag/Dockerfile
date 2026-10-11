@@ -6,12 +6,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN pip install --no-cache-dir \
-    fastapi uvicorn pydantic \
+    fastapi uvicorn pydantic prometheus-client \
     "langchain-core>=0.3,<1.0" \
     "langchain-google-genai>=2.0,<4.0" \
     "langgraph>=0.2,<1.0" \
     "psycopg[binary]>=3.2,<4.0"
 
+COPY shared/ ./shared/
 COPY agents/rag/ ./rag/
 
 EXPOSE 8001

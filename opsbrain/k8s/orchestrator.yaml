@@ -22,7 +22,8 @@ spec:
         - name: orchestrator
           image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/opsbrain-orchestrator:latest
           ports:
-            - containerPort: 8000
+            - name: http
+              containerPort: 8000
           env:
             - name: OPENAI_API_KEY
               valueFrom:
@@ -48,11 +49,18 @@ kind: Service
 metadata:
   name: orchestrator
   namespace: opsbrain
+  labels:
+    app: orchestrator
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8000"
 spec:
   selector:
     app: orchestrator
   ports:
-    - port: 8000
+    - name: http
+      port: 8000
       targetPort: 8000
   type: ClusterIP
 ---

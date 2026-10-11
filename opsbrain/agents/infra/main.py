@@ -9,12 +9,14 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from agents.infra.agent import InfraAgent, InfraClientError
+from shared.observability import instrument_app
 
 app = FastAPI(
     title="OpsBrain Infra Agent",
     version="0.1.0",
     description="Check AWS resource state, Kubernetes pod/node health, and Terraform plan status.",
 )
+instrument_app(app, "infra-agent")
 
 
 class HealthResponse(BaseModel):

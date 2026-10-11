@@ -21,7 +21,8 @@ spec:
         - name: infra-agent
           image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/opsbrain-infra:latest
           ports:
-            - containerPort: 8003
+            - name: http
+              containerPort: 8003
           env:
             - name: AWS_REGION
               value: "us-east-1"
@@ -44,10 +45,17 @@ kind: Service
 metadata:
   name: infra-agent
   namespace: opsbrain
+  labels:
+    app: infra-agent
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8003"
 spec:
   selector:
     app: infra-agent
   ports:
-    - port: 8003
+    - name: http
+      port: 8003
       targetPort: 8003
   type: ClusterIP

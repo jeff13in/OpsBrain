@@ -9,12 +9,14 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from agents.code.agent import CodeAgent, CodeClientError
+from shared.observability import instrument_app
 
 app = FastAPI(
     title="OpsBrain Code Agent",
     version="0.1.0",
     description="Query GitHub pull requests and GitHub Actions CI/CD pipeline status.",
 )
+instrument_app(app, "code-agent")
 
 
 class HealthResponse(BaseModel):

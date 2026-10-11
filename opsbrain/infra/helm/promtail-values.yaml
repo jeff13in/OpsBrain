@@ -1,0 +1,26 @@
+config:
+  clients:
+    - url: http://loki-gateway.observability.svc.cluster.local/loki/api/v1/push
+  snippets:
+    pipelineStages:
+      - cri: {}
+      - json:
+          expressions: {severity: severity, service: service}
+      - labels:
+          severity:
+          service:
+    extraRelabelConfigs:
+      - source_labels: [__meta_kubernetes_namespace]
+        regex: opsbrain
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        target_label: service
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        regex: (.*)-agent
+        replacement: $1
+        target_label: agent_type
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {cpu: 200m, memory: 256Mi}

@@ -8,6 +8,7 @@ collects answers, and returns one AskResponse (see orchestrator/CONTRACT.md).
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from functools import lru_cache
 
@@ -18,10 +19,12 @@ from orchestrator.graph import build_orchestrator_graph
 from orchestrator.llm import get_llm
 from orchestrator.memory import SessionMemory
 from shared.models import AskRequest, AskResponse
+from shared.observability import WORKFLOWS, WORKFLOW_DURATION, instrument_app
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="OpsBrain Orchestrator", version="0.2.0")
+instrument_app(app, "orchestrator")
 
 memory = SessionMemory()
 
@@ -46,13 +49,20 @@ async def ask(request: AskRequest):
     200 when at least one agent answered (status ok/partial), 502 when none did.
     """
     request_id = uuid.uuid4().hex
-    out: dict = await get_graph().ainvoke({
-        "request_id": request_id,
-        "session_id": request.session_id,
-        "question": request.question,
-        "history": memory.history(request.session_id),
-        "results": [],
-    })
+    started = time.monotonic()
+    workflow_status = "error"
+    try:
+        out: dict = await get_graph().ainvoke({
+            "request_id": request_id,
+            "session_id": request.session_id,
+            "question": request.question,
+            "history": memory.history(request.session_id),
+            "results": [],
+        })
+        workflow_status = out["status"]
+    finally:
+        WORKFLOWS.labels(workflow_status).inc()
+        WORKFLOW_DURATION.observe(time.monotonic() - started)
     # Parallel branches append in completion order; report them in routing order.
     order = {name: i for i, name in enumerate(out["routing"].agents)}
     results = sorted(out["results"], key=lambda r: order.get(r.agent, len(order)))

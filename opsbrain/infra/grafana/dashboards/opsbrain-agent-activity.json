@@ -1,0 +1,22 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {"id": 1, "title": "Agent execution rate", "type": "timeseries", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum by (agent, status) (rate(opsbrain_agent_executions_total{agent=~\"$agent\"}[$__rate_interval]))", "legendFormat": "{{agent}} {{status}}"}], "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}, "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}},
+    {"id": 2, "title": "Agent failures (selected range)", "type": "stat", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum by (agent) (increase(opsbrain_agent_executions_total{agent=~\"$agent\",status=~\"error|timeout\"}[$__range]))", "legendFormat": "{{agent}}"}], "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 3}]}}, "overrides": []}, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}},
+    {"id": 3, "title": "Agent execution latency (p50 / p95 / p99)", "type": "timeseries", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "histogram_quantile(0.50, sum by (agent, le) (rate(opsbrain_agent_execution_duration_seconds_bucket{agent=~\"$agent\"}[$__rate_interval])))", "legendFormat": "p50 {{agent}}"}, {"refId": "B", "expr": "histogram_quantile(0.95, sum by (agent, le) (rate(opsbrain_agent_execution_duration_seconds_bucket{agent=~\"$agent\"}[$__rate_interval])))", "legendFormat": "p95 {{agent}}"}, {"refId": "C", "expr": "histogram_quantile(0.99, sum by (agent, le) (rate(opsbrain_agent_execution_duration_seconds_bucket{agent=~\"$agent\"}[$__rate_interval])))", "legendFormat": "p99 {{agent}}"}], "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}, "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}},
+    {"id": 4, "title": "Orchestrator workflows", "type": "timeseries", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum by (status) (rate(opsbrain_orchestrator_workflows_total[$__rate_interval]))", "legendFormat": "{{status}}"}], "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []}, "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}},
+    {"id": 5, "title": "Workflow latency p95", "type": "timeseries", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(opsbrain_orchestrator_workflow_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p95"}], "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}},
+    {"id": 6, "title": "Agent logs", "type": "logs", "datasource": {"type": "loki", "uid": "loki"}, "targets": [{"refId": "A", "expr": "{agent_type=~\"$agent\", severity=~\"$severity\"} | json"}], "gridPos": {"h": 10, "w": 24, "x": 0, "y": 24}}
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["opsbrain", "agents", "production"],
+  "templating": {"list": [{"name": "agent", "label": "Agent", "type": "query", "datasource": {"type": "prometheus", "uid": "prometheus"}, "query": {"query": "label_values(opsbrain_agent_executions_total, agent)", "refId": "VariableQuery"}, "includeAll": true, "multi": true, "allValue": ".*", "refresh": 1}, {"name": "severity", "label": "Log severity", "type": "custom", "query": "DEBUG,INFO,WARNING,ERROR,CRITICAL", "includeAll": true, "multi": true, "allValue": ".*"}]},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "OpsBrain / Agent Activity",
+  "uid": "opsbrain-agent-activity",
+  "version": 1
+}

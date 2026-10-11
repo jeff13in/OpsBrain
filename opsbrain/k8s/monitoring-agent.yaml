@@ -21,10 +21,17 @@ spec:
         - name: monitoring-agent
           image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/opsbrain-monitoring:latest
           ports:
-            - containerPort: 8002
+            - name: http
+              containerPort: 8002
           env:
             - name: PROMETHEUS_URL
-              value: "http://prometheus:9090"
+              value: "http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090"
+            - name: PROMETHEUS_BASE_URL
+              value: "http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090"
+            - name: GRAFANA_BASE_URL
+              value: "http://kube-prometheus-stack-grafana.observability.svc.cluster.local"
+            - name: ALERTMANAGER_BASE_URL
+              value: "http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093"
           resources:
             requests:
               cpu: "100m"
@@ -44,10 +51,17 @@ kind: Service
 metadata:
   name: monitoring-agent
   namespace: opsbrain
+  labels:
+    app: monitoring-agent
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8002"
 spec:
   selector:
     app: monitoring-agent
   ports:
-    - port: 8002
+    - name: http
+      port: 8002
       targetPort: 8002
   type: ClusterIP

@@ -21,7 +21,8 @@ spec:
         - name: code-agent
           image: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/opsbrain-code:latest
           ports:
-            - containerPort: 8004
+            - name: http
+              containerPort: 8004
           env:
             - name: GITHUB_TOKEN
               valueFrom:
@@ -47,10 +48,17 @@ kind: Service
 metadata:
   name: code-agent
   namespace: opsbrain
+  labels:
+    app: code-agent
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8004"
 spec:
   selector:
     app: code-agent
   ports:
-    - port: 8004
+    - name: http
+      port: 8004
       targetPort: 8004
   type: ClusterIP

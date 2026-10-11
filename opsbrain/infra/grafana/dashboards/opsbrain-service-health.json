@@ -1,0 +1,23 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {"id": 1, "title": "Service availability", "description": "1 means Prometheus can scrape the service.", "type": "stat", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "up{job=~\"opsbrain-.*\",service=~\"$service\"}", "legendFormat": "{{service}}"}], "fieldConfig": {"defaults": {"min": 0, "max": 1, "mappings": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []}, "gridPos": {"h": 5, "w": 24, "x": 0, "y": 0}},
+    {"id": 2, "title": "Request throughput", "type": "timeseries", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum by (service) (rate(opsbrain_http_requests_total{service=~\"$service\"}[$__rate_interval]))", "legendFormat": "{{service}}"}], "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}, "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5}},
+    {"id": 3, "title": "5xx error rate", "type": "timeseries", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum by (service) (rate(opsbrain_http_requests_total{service=~\"$service\",status_code=~\"5..\"}[$__rate_interval])) / clamp_min(sum by (service) (rate(opsbrain_http_requests_total{service=~\"$service\"}[$__rate_interval])), 0.001)", "legendFormat": "{{service}}"}], "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0}, "overrides": []}, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5}},
+    {"id": 4, "title": "Request latency percentiles", "type": "timeseries", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "histogram_quantile(0.50, sum by (service, le) (rate(opsbrain_http_request_duration_seconds_bucket{service=~\"$service\"}[$__rate_interval])))", "legendFormat": "p50 {{service}}"}, {"refId": "B", "expr": "histogram_quantile(0.95, sum by (service, le) (rate(opsbrain_http_request_duration_seconds_bucket{service=~\"$service\"}[$__rate_interval])))", "legendFormat": "p95 {{service}}"}, {"refId": "C", "expr": "histogram_quantile(0.99, sum by (service, le) (rate(opsbrain_http_request_duration_seconds_bucket{service=~\"$service\"}[$__rate_interval])))", "legendFormat": "p99 {{service}}"}], "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}, "gridPos": {"h": 8, "w": 24, "x": 0, "y": 13}},
+    {"id": 5, "title": "Process CPU", "type": "timeseries", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum by (service) (rate(process_cpu_seconds_total{job=~\"opsbrain-.*\",service=~\"$service\"}[$__rate_interval]))", "legendFormat": "{{service}}"}], "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []}, "gridPos": {"h": 7, "w": 12, "x": 0, "y": 21}},
+    {"id": 6, "title": "Process resident memory", "type": "timeseries", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "expr": "sum by (service) (process_resident_memory_bytes{job=~\"opsbrain-.*\",service=~\"$service\"})", "legendFormat": "{{service}}"}], "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []}, "gridPos": {"h": 7, "w": 12, "x": 12, "y": 21}},
+    {"id": 7, "title": "Application logs", "type": "logs", "datasource": {"type": "loki", "uid": "loki"}, "targets": [{"refId": "A", "expr": "{service=~\"$service\"} | json"}], "gridPos": {"h": 9, "w": 24, "x": 0, "y": 28}}
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["opsbrain", "production", "service-health"],
+  "templating": {"list": [{"name": "service", "label": "Service", "type": "query", "datasource": {"type": "prometheus", "uid": "prometheus"}, "query": {"query": "label_values(up{job=~\"opsbrain-.*\"}, service)", "refId": "VariableQuery"}, "includeAll": true, "multi": true, "allValue": ".*", "refresh": 1}]},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "OpsBrain / Service Health",
+  "uid": "opsbrain-service-health",
+  "version": 1
+}

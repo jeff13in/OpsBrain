@@ -37,6 +37,7 @@ from shared.models import (
     OverallStatus,
     RoutingDecision,
 )
+from shared.observability import AGENT_DURATION, AGENT_EXECUTIONS
 
 
 class OrchestratorState(TypedDict, total=False):
@@ -85,17 +86,26 @@ async def call_agent(
                 error = error_from_exception(exc)
                 if attempt == 1 and error.retryable and error.code != "timeout":
                     continue
-                return result_from_error(agent, error, _elapsed_ms(started))
+                result = result_from_error(agent, error, _elapsed_ms(started))
+                _observe_agent_result(agent, result.status, started)
+                return result
             try:
                 body = resp.json()
             except ValueError:
                 body = None  # 2xx with a non-JSON body → invalid_response
-            return result_from_reply(agent, body, _elapsed_ms(started))
+            result = result_from_reply(agent, body, _elapsed_ms(started))
+            _observe_agent_result(agent, result.status, started)
+            return result
     raise AssertionError("unreachable")  # pragma: no cover
 
 
 def _elapsed_ms(started: float) -> int:
     return int((time.monotonic() - started) * 1000)
+
+
+def _observe_agent_result(agent: AgentName, status: str, started: float) -> None:
+    AGENT_EXECUTIONS.labels(agent, status).inc()
+    AGENT_DURATION.labels(agent).observe(time.monotonic() - started)
 
 
 def build_orchestrator_graph(llm: Any | None = None, transport: httpx.AsyncBaseTransport | None = None):

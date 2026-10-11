@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install --no-cache-dir fastapi uvicorn pydantic boto3 kubernetes
+RUN pip install --no-cache-dir fastapi uvicorn pydantic prometheus-client boto3 kubernetes
 COPY shared/            ./shared/
 COPY agents/infra/      ./agents/infra/
 ENV PYTHONPATH=/app

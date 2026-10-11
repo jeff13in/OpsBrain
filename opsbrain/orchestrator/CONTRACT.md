@@ -2,7 +2,7 @@
 
 How the Orchestrator and the four agents talk to each other. Models live in
 `shared/models.py`; rules live in `orchestrator/contract.py` and
-`orchestrator/router.py`; tests in `tests/test_orchestrator_contract.py` and `tests/test_orchestrator_graph.py`.
+`orchestrator/router.py`; tests in `tests/test_orchestrator_contract.py`, `tests/test_orchestrator_graph.py` and `tests/test_agent_bus.py`.
 
 ## Request flow
 
@@ -55,6 +55,24 @@ On failure, **return a non-2xx status**, don't put the error into `answer`:
 - 503: a dependency is down, e.g. Prometheus or the GitHub API (retryable)
 - other 5xx: a bug (not retried)
 
+## 3a. Transport: Kafka (OPU-50), HTTP fallback
+
+With `AGENT_TRANSPORT=kafka` the same `/query` call travels over Kafka (`shared/agent_bus.py`):
+
+| Topic | Message | Producer → consumer |
+|---|---|---|
+| `opsbrain.agent.<agent>.requests` | `KafkaAgentRequest{correlation_id, agent, query: AgentQuery, reply_topic, deadline}` | Orchestrator → agent (group `<agent>-agent`) |
+| `opsbrain.agent.replies` | `KafkaAgentReply{correlation_id, agent, status_code, body}` | agent → every Orchestrator process (own group each) |
+
+- The agent's worker calls its own `/query` in-process and replies with the status code and body,
+  so section 3 applies unchanged and the Orchestrator maps replies with the same rules as HTTP.
+- `deadline` is when the Orchestrator stops waiting; agents skip requests past it.
+- Malformed messages are logged and dropped, never fatal to a consumer.
+- Kafka refusing the publish, or the Orchestrator not being connected yet, is `unavailable`
+  (retried once). An agent that's down simply never replies, so it shows up as `timeout`, not
+  `unavailable` as it would over HTTP.
+- Without `AGENT_TRANSPORT=kafka`, agents are called over HTTP at `<NAME>_AGENT_URL`.
+
 ## 4. Error paths
 
 Every agent call ends in an `AgentResult`; the Orchestrator never raises because one agent failed.
@@ -62,7 +80,7 @@ Every agent call ends in an `AgentResult`; the Orchestrator never raises because
 | What happened | `status` | `error.code` | retryable |
 |---|---|---|---|
 | no reply before timeout | `timeout` | `timeout` | yes |
-| connection refused / DNS / HTTP 503 | `error` | `unavailable` | yes |
+| connection refused / DNS / HTTP 503 / Kafka publish failed | `error` | `unavailable` | yes |
 | HTTP 4xx | `error` | `bad_request` | no |
 | other HTTP 5xx | `error` | `agent_error` | no |
 | 2xx but no `answer` field or not JSON | `error` | `invalid_response` | no |
@@ -90,7 +108,9 @@ recently used are evicted). Failed (`error`) turns aren't remembered.
 
 ## Known gaps in the agents (to fix before OPU-44 / OPU-50)
 
-1. **Monitoring has no `/query` endpoint.** It needs one that returns `AgentReply` (Rifat's code).
+1. ~~**Monitoring has no `/query` endpoint.**~~ Added in OPU-50: alerts by default, pod health
+   for pod/crash/restart questions, scrape targets for down/target questions; 503 when a backend
+   can't be queried. Keyword dispatch only — Rifat may want to refine it.
 2. ~~**Infra and Code `ask()` return errors as 200s.**~~ Fixed in OPU-62. `/query` now returns
    503 when the backend is down, slow or throttled, 404/400 for things that don't exist or bad
    input, and 500 when credentials, permissions or config are missing. Backend calls are bounded

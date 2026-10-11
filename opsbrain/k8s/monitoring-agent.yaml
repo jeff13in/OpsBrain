@@ -23,6 +23,10 @@ spec:
           ports:
             - containerPort: 8002
           env:
+            - name: AGENT_TRANSPORT
+              value: "kafka"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
             - name: PROMETHEUS_URL
               value: "http://prometheus:9090"
           resources:

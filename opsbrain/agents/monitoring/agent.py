@@ -264,6 +264,71 @@ class MonitoringAgent:
             "pods": [self._serialize_pod(pod) for pod in pods],
         }
 
+    def get_scrape_targets(self) -> dict[str, Any]:
+        """Which Prometheus scrape targets are up or down (the `up` metric)."""
+        result = self.query_prometheus("up")["result"]
+        targets = [
+            {
+                "job": entry.get("metric", {}).get("job", "unknown"),
+                "instance": entry.get("metric", {}).get("instance", "unknown"),
+                "up": self._sample_value(entry) == 1.0,
+            }
+            for entry in result
+        ]
+        return {
+            "total": len(targets),
+            "down": sum(not t["up"] for t in targets),
+            "targets": targets,
+        }
+
+    def ask(self, question: str) -> dict[str, Any]:
+        """Best-effort natural-language entry point used by the orchestrator's /query contract (OPU-50).
+
+        Picks one backend query by keyword; alerts are the default because they're the
+        broadest health signal. MonitoringClientError propagates so /query returns 503
+        instead of an error message dressed up as an answer.
+        """
+        q = question.lower()
+        if any(word in q for word in ("pod", "crash", "restart")):
+            data = self.get_pod_health()
+            return {"answer": self._format_pod_health(data), "sources": ["prometheus:kube_pod_status"], "data": data}
+        if any(word in q for word in ("target", "scrape", "down")):
+            data = self.get_scrape_targets()
+            return {"answer": self._format_targets(data), "sources": ["prometheus:up"], "data": data}
+        data = self.summarize_alerts()
+        return {"answer": self._format_alerts(data), "sources": ["alertmanager:alerts"], "data": data}
+
+    @staticmethod
+    def _format_alerts(data: dict[str, Any]) -> str:
+        if data["total"] == 0:
+            return "No alerts in Alertmanager."
+        severities = ", ".join(f"{count} {sev}" for sev, count in data["severity_breakdown"].items())
+        top = ", ".join(f"{a['alertname']} ({a['count']})" for a in data["top_alerts"])
+        return (
+            f"{data['active']} active and {data['suppressed']} suppressed alert(s) out of {data['total']} "
+            f"({severities}). Most frequent: {top}."
+        )
+
+    @staticmethod
+    def _format_pod_health(data: dict[str, Any]) -> str:
+        if data["total_pods"] == 0:
+            return "Prometheus has no pod status metrics."
+        breakdown = ", ".join(f"{count} {status}" for status, count in data["status_breakdown"].items())
+        unhealthy = [p["pod"] for p in data["pods"] if p["status"] in {"unhealthy", "degraded"}]
+        answer = f"{data['total_pods']} pod(s): {breakdown}."
+        if unhealthy:
+            answer += f" Needing attention: {', '.join(unhealthy[:10])}."
+        return answer
+
+    @staticmethod
+    def _format_targets(data: dict[str, Any]) -> str:
+        if data["total"] == 0:
+            return "Prometheus has no scrape targets."
+        if data["down"] == 0:
+            return f"All {data['total']} Prometheus scrape target(s) are up."
+        down = ", ".join(f"{t['job']} ({t['instance']})" for t in data["targets"] if not t["up"])
+        return f"{data['down']} of {data['total']} Prometheus scrape target(s) are down: {down}."
+
     def _request_json(
         self,
         method: str,

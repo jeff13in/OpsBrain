@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install --no-cache-dir fastapi uvicorn pydantic httpx "langgraph>=0.2,<1.0" "langchain-core>=0.3,<1.0" "langchain-google-genai>=2.0,<4.0"
+RUN pip install --no-cache-dir fastapi uvicorn pydantic httpx "langgraph>=0.2,<1.0" "langchain-core>=0.3,<1.0" "langchain-google-genai>=2.0,<4.0" kafka-python
 COPY shared/         ./shared/
 COPY orchestrator/   ./orchestrator/
 ENV PYTHONPATH=/app

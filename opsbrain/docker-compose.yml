@@ -1,6 +1,7 @@
 # OpsBrain — local development environment
 #
-# Full stack (all agents + Kafka + Prometheus):
+# Full stack (all agents + Kafka + Prometheus). The Orchestrator reaches the
+# agents over Kafka (AGENT_TRANSPORT=kafka); each agent's HTTP API still works too.
 #   docker compose --profile full up
 #
 # First-time setup:
@@ -37,6 +38,8 @@ services:
     ports:
       - "8001:8001"
     environment:
+      AGENT_TRANSPORT:         kafka
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       GOOGLE_API_KEY:         ${GOOGLE_API_KEY}
       GOOGLE_EMBEDDING_MODEL: models/gemini-embedding-001
       GOOGLE_CHAT_MODEL:      gemini-3.6-flash
@@ -44,6 +47,8 @@ services:
     volumes:
       - ./docs:/app/data:ro   # mount docs so you can add runbooks without rebuilding
     depends_on:
+      kafka:
+        condition: service_healthy
       postgres:
         condition: service_healthy
     profiles: [full]
@@ -57,7 +62,12 @@ services:
     ports:
       - "8000:8000"
     environment:
+      AGENT_TRANSPORT:         kafka
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+    depends_on:
+      kafka:
+        condition: service_healthy
     profiles: [full]
 
   # ── Monitoring Agent (Stage 2) ───────────────────────────────────────────────
@@ -69,6 +79,8 @@ services:
     ports:
       - "8002:8002"
     environment:
+      AGENT_TRANSPORT:         kafka
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       PROMETHEUS_BASE_URL:                 http://prometheus:9090
       GRAFANA_BASE_URL:                    http://grafana:3000
       GRAFANA_API_TOKEN:                   ${GRAFANA_API_TOKEN}
@@ -76,6 +88,8 @@ services:
       MONITORING_TIMEOUT_SECONDS:          10
       MONITORING_DEFAULT_LOOKBACK_MINUTES: 15
     depends_on:
+      kafka:
+        condition: service_healthy
       prometheus:
         condition: service_healthy
     profiles: [full]
@@ -89,6 +103,8 @@ services:
     ports:
       - "8003:8003"
     environment:
+      AGENT_TRANSPORT:         kafka
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       AWS_REGION:            ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID:     ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -96,6 +112,9 @@ services:
       TERRAFORM_DIR:         /app/infra/terraform
     volumes:
       - ./infra/terraform:/app/infra/terraform:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
     profiles: [full]
 
   # ── Code Agent (Stage 2) ────────────────────────────────────────────────────
@@ -107,8 +126,13 @@ services:
     ports:
       - "8004:8004"
     environment:
+      AGENT_TRANSPORT:         kafka
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO:  ${GITHUB_REPO:-}
+    depends_on:
+      kafka:
+        condition: service_healthy
     profiles: [full]
 
   # ── Prometheus ───────────────────────────────────────────────────────────────
@@ -188,8 +212,15 @@ services:
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS:       0@kafka:9093
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES:      CONTROLLER
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE:      "true"   # agent request/reply topics are created on first use (OPU-50)
     volumes:
       - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
     profiles: [full]
 
 volumes:

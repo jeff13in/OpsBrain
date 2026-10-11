@@ -9,12 +9,16 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from agents.infra.agent import InfraAgent, InfraClientError
+from shared.agent_bus import attach_kafka_worker
 
 app = FastAPI(
     title="OpsBrain Infra Agent",
     version="0.1.0",
     description="Check AWS resource state, Kubernetes pod/node health, and Terraform plan status.",
 )
+
+# Also answer the Orchestrator's requests over Kafka when AGENT_TRANSPORT=kafka (OPU-50).
+attach_kafka_worker(app, "infra")
 
 
 class HealthResponse(BaseModel):

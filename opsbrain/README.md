@@ -903,53 +903,59 @@ $body = @{ question = "What should I do when CPU usage is high?" } | ConvertTo-J
 Invoke-RestMethod -Uri http://localhost:8000/ask -Method Post -ContentType "application/json" -Body $body
 ```
 
-**`/ask` currently forwards every question directly and only to the RAG
-agent's `/query`** (`orchestrator/main.py` — `RAG_AGENT_URL` is
-hard-coded, `httpx.post` straight to it). The response you get back is the
-RAG agent's own response shape verbatim (§2's `/query` fields), not an
-orchestrator-specific format. A `502` means the RAG agent itself returned an
-error or couldn't be reached.
+`/ask` routes the question to one or more agents, calls them in parallel,
+and merges their answers into one `AskResponse`
+(`{request_id, session_id, question, status, answer, sources, routing, results}`).
+Pass the same `session_id` on follow-ups to keep conversation context. The
+full rules — routing, error codes, retries, aggregation — are in
+[`orchestrator/CONTRACT.md`](orchestrator/CONTRACT.md). In short:
 
-### Calling Infra and Code directly (the orchestrator doesn't route to them)
+- **Routing**: a Gemini classifier when `GOOGLE_API_KEY` is set, whole-word
+  keyword matching otherwise; nothing matched → RAG.
+- **Status**: `ok` (every routed agent answered), `partial` (some did — the
+  answer ends with an `Unavailable: <agent> (<code>)` line), `error` (none
+  did, HTTP `502`). `results[]` shows each agent's own outcome and latency.
 
-Since `/ask` only ever talks to RAG, use the agents' own ports directly for
-infra/code questions — same PowerShell patterns as §4/§5:
+### How the Orchestrator reaches the agents: Kafka (OPU-50)
+
+With `AGENT_TRANSPORT=kafka` (set for every service in `docker-compose.yml`
+and `k8s/`), the Orchestrator sends each agent call as a message instead of
+an HTTP request:
+
+```
+Orchestrator ── KafkaAgentRequest ──▶ opsbrain.agent.<agent>.requests ──▶ agent
+     ▲                                                                     │
+     └──────── KafkaAgentReply ◀── opsbrain.agent.replies ◀────────────────┘
+```
+
+- Each agent runs a background worker (`shared/agent_bus.py::AgentWorker`)
+  that answers requests by calling its **own** `/query` in-process, so
+  validation and status codes are identical to HTTP. The agents' HTTP APIs
+  keep working alongside it.
+- The reply carries the agent's status code and body; the Orchestrator applies
+  the same contract rules as for HTTP (`503` → `unavailable`, retried once;
+  `4xx` → `bad_request`; no reply within the agent's budget → `timeout`).
+- Topics are auto-created on first use. Agents skip requests whose deadline
+  has passed, so a backlog after an agent restart doesn't produce stale work.
+- Without `AGENT_TRANSPORT=kafka` (e.g. running services outside Compose),
+  the Orchestrator falls back to HTTP via `<NAME>_AGENT_URL`.
+
+**Verified so far:** unit tests with an in-memory broker
+(`tests/test_agent_bus.py`) cover the full request → agent → reply path,
+retries, timeouts, and broker failures, plus a smoke test of the worker
+against the real Monitoring and Infra apps. **A live run of the whole stack
+on the real `kafka` container is OPU-51** — until then, treat the Compose
+wiring as untested end-to-end.
+
+### Calling agents directly
+
+Every agent still has its own HTTP API on its own port (§2–§5), handy for
+checking one agent in isolation:
 
 ```powershell
 Invoke-RestMethod -Uri http://localhost:8003/query -Method Post -ContentType "application/json" -Body (@{ question = "what instances are running?" } | ConvertTo-Json)
 Invoke-RestMethod -Uri http://localhost:8004/query -Method Post -ContentType "application/json" -Body (@{ question = "any open PRs?" } | ConvertTo-Json)
 ```
-
-### What's genuinely unfinished (not just under-documented)
-
-Verified directly against `orchestrator/graph.py` and `orchestrator/router.py`:
-
-- `orchestrator/router.py::route()` is a hard-coded stub — its docstring
-  says it will use an LLM classifier "in Stage 2," but right now it always
-  returns `["rag"]` regardless of input, and **`orchestrator/main.py` doesn't
-  even call it** — `/ask` bypasses `router.py` entirely.
-- `orchestrator/graph.py` defines a LangGraph state machine
-  (`route_node` → `gather_node` → `synthesise_node`) intended to fan out to
-  multiple agents and merge their answers — but **nothing in `main.py`
-  imports or invokes this graph at all.** `gather_node` and
-  `synthesise_node` are literal placeholder stubs (`# TODO Stage 2`) that
-  return an empty dict and the string `"Orchestrator synthesis not yet
-  implemented."`, respectively.
-- **Kafka fan-out**: `shared/kafka_client.py` is **no longer a print-only
-  stub** — `KafkaProducer`/`KafkaConsumer` now wrap real `kafka-python`
-  calls (`send()` blocks until the broker acknowledges;
-  `serialize_message`/`deserialize_message` handle either a Pydantic
-  `AgentMessage` or a plain dict). Verified working end-to-end against the
-  real `kafka` container in this Compose file. **What's still true, though:
-  nothing imports `shared/kafka_client.py` from `agents/` or
-  `orchestrator/` yet** — the utility exists and works, but no agent
-  actually publishes or consumes a message through it. The `kafka`
-  container runs in Compose, and you *can* talk to it using this client,
-  but no running service does so automatically today.
-
-In short: multi-agent routing and response synthesis are still skeleton
-code. Kafka messaging has a real, tested client now — the gap that's left
-is wiring any agent to actually use it.
 
 ---
 
@@ -1134,6 +1140,13 @@ pytest tests\ -v --tb=short
   connects to a broker immediately, so that part is intentionally not
   unit-tested — it was verified manually against the real `kafka`
   container instead (not part of this automated suite).
+- `tests\test_agent_bus.py` — Orchestrator ↔ agent messaging over Kafka
+  (`shared/agent_bus.py`), using an in-memory broker that still goes through
+  the real serialize/deserialize: round trips, the graph fanning out over
+  Kafka, 503 retry, 4xx/5xx/invalid replies, timeouts, broker failures,
+  expired/malformed requests. No real broker involved (that's OPU-51).
+- `tests\test_monitoring_query.py` — the Monitoring agent's `/query`
+  (alerts, pod health, scrape targets; 503 when a backend is down), mocked.
 - **No automated tests exist for the Code Agent in this branch** — no
   `test_code_agent.py`. Its correctness so far has only been verified
   through the manual/live checks documented in §5 and §7 (including a real
@@ -1177,7 +1190,7 @@ User (CLI / Slack — not built yet)
 | **Monitoring** | Real Prometheus/Grafana/Alertmanager integration, verified UIDs, alert summaries, pod health from a fake demo exporter | No real Kubernetes cluster behind `/pods/health`; agents don't expose `/metrics` themselves yet |
 | **Infra** | Real AWS (boto3: EC2/EKS/RDS), real Kubernetes client (pods/nodes/deployments/resource usage), real Terraform-state-reading logic, an aggregate health-summary endpoint, graceful degradation everywhere, moto-based test coverage for the AWS calls | Kubeconfig isn't actually mountable as shipped; Terraform CLI isn't installed; `/terraform/plan` never generates a plan, only displays one; K8s-side methods have no unit tests, only manual verification |
 | **Code** | Real GitHub REST API integration — PRs, commits, deployments, check-run status, Actions runs, and two real mutating actions (rerun a run, dispatch a workflow) | Check-runs only (not the older combined-status API); no test coverage at all; `workflow_dispatch` triggering only works against workflows that declare that trigger (this repo's own CI doesn't) |
-| **Orchestrator** | `/health`, and forwarding `/ask` to RAG | Routing (`router.py`) and multi-agent fan-out/synthesis (`graph.py`) are still skeleton/stub code, not connected to `main.py`. Kafka messaging (`shared/kafka_client.py`) is now a real, tested client — but still not imported by any agent or the orchestrator |
+| **Orchestrator** | LLM/keyword routing, parallel fan-out to all four agents over Kafka (HTTP fallback), contract-based error handling and retries, answer synthesis, per-session memory | Live Kafka run across the whole stack not done yet (OPU-51); session memory is per process, so 2 replicas need sticky sessions or a shared store (OPU-54) |
 
 ### Project structure
 
@@ -1188,12 +1201,12 @@ opsbrain/
 │   ├── monitoring/   ← fully implemented (against real Prometheus/Grafana/Alertmanager)
 │   ├── infra/         ← implemented, with the real limitations in §4
 │   └── code/          ← implemented, with the real limitations in §5
-├── orchestrator/      ← /health + RAG-only /ask; router.py/graph.py unused skeletons
-├── shared/             ← models.py/config.py/kafka_client.py — kafka_client.py is now a real, tested Kafka producer/consumer; still not imported by any agent
+├── orchestrator/      ← /ask: routing, parallel agent calls over Kafka, synthesis (see CONTRACT.md)
+├── shared/             ← models.py/config.py, kafka_client.py (producer/consumer), agent_bus.py (Orchestrator ↔ agent request/reply over Kafka)
 ├── infra/terraform/  ← Terraform IaC definitions (not yet applied to any real AWS account)
 ├── infra/prometheus/, infra/grafana/, infra/alertmanager/ ← real local monitoring stack config
 ├── k8s/                ← Kubernetes manifests referencing ECR image paths (not GHCR — not yet updated for the current image registry)
-├── tests/              ← RAG + Monitoring + Infra (AWS only, via moto) + Kafka client (serialization only) coverage — see §8 for exact gaps
+├── tests/              ← RAG + Monitoring + Infra (AWS only, via moto) + Orchestrator + Kafka messaging (in-memory broker) coverage — see §8 for exact gaps
 ├── scripts/validate_rag.py ← manual live-integration script (see §2)
 ├── .github/            ← does not exist under opsbrain/ — the real CI workflow lives at the repo root
 ├── docker-compose.yml
@@ -1209,8 +1222,8 @@ opsbrain/
 - [x] Code Agent — real GitHub PR/commits/deployments/Actions integration, plus two real mutating actions (rerun a run, dispatch a workflow)
 - [x] Kafka producer/consumer — real `kafka-python`-backed client in `shared/kafka_client.py`, verified against a live broker
 - [x] CI pipeline — lint, test, build, and publish images to GHCR (see the repo-root `.github/workflows/ci-cd.yml`); the `deploy` stage's working-directory bug is fixed, though it still can't succeed end-to-end until the next item below is done
-- [ ] Orchestrator multi-agent routing and answer synthesis (`router.py`/`graph.py` are stubs)
-- [ ] Wiring any agent to actually publish/consume through `shared/kafka_client.py` — the client itself works, nothing calls it yet
+- [x] Orchestrator multi-agent routing and answer synthesis (OPU-42/43)
+- [x] All four agents and the Orchestrator talk over Kafka (`shared/agent_bus.py`, OPU-50) — unit-tested; live full-stack run is OPU-51
 - [ ] `/metrics` endpoints on the agents themselves (Prometheus currently scrapes them into "down")
 - [ ] Kubeconfig mounting for the Infra Agent (§4, Limitation 2)
 - [ ] Terraform CLI installed in the Infra Agent's image (§4, Limitation 3)

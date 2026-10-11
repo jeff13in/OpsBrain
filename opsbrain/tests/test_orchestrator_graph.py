@@ -10,6 +10,7 @@ import asyncio
 import json
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import httpx
 from fastapi.testclient import TestClient
@@ -214,8 +215,10 @@ class SessionMemoryTests(unittest.TestCase):
 
     def test_expired_sessions_are_forgotten(self) -> None:
         mem = SessionMemory(ttl_s=0)
-        mem.append("a", "q", "a")
-        self.assertEqual(mem.history("a"), [])
+        # Avoid depending on platform clock resolution between adjacent calls.
+        with patch("orchestrator.memory.time.monotonic", side_effect=[1.0, 2.0]):
+            mem.append("a", "q", "a")
+            self.assertEqual(mem.history("a"), [])
 
 
 if __name__ == "__main__":

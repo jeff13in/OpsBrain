@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-10-11T01:57:56.633005+00:00",
+  "mode": "live-provider-and-live-HTTP-services",
+  "models": {
+    "router": "openai/gpt-oss-20b",
+    "answer": "openai/gpt-oss-120b",
+    "synth": "qwen/qwen3.8-27b"
+  },
+  "transport": "HTTP; Kafka is not connected in this checkout",
+  "question_set": "validation/opu51-questions.json",
+  "question_set_origin": "Reconstructed from repository runbooks and Linear OPU-51 scope; no original question set exists here",
+  "checks": [
+    {
+      "name": "live-validation",
+      "status": "not-executed",
+      "reason": "LLM_API_KEY is not configured"
+    }
+  ]
+}

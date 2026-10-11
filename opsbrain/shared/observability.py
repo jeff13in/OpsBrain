@@ -14,7 +14,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
-
 HTTP_REQUESTS = Counter(
     "opsbrain_http_requests_total",
     "HTTP requests handled by OpsBrain services.",

@@ -36,12 +36,112 @@ directory.
 
 ## 1. Setup and service management
 
+### Groq chat setup (OPU-80)
+
+Chat generation uses `shared/llm.py` and LangChain `ChatOpenAI` against Groq's
+OpenAI-compatible Chat Completions endpoint. Gemini remains the embedding
+provider. Add these settings to your existing `.env` without replacing secrets:
+
+```dotenv
+LLM_BASE_URL=https://api.groq.com/openai/v1
+LLM_API_KEY=
+LLM_MODEL_ROUTER=openai/gpt-oss-20b
+LLM_MODEL_ANSWER=openai/gpt-oss-120b
+LLM_MODEL_SYNTH=qwen/qwen3.8-27b
+```
+
+Create a key at <https://console.groq.com/keys> and fill in `LLM_API_KEY` locally.
+The synthesis identifier is verified against the
+[Groq model catalog](https://console.groq.com/docs/models) on October 10, 2026;
+Qwen is a preview model and may change or be removed. Check your account's
+`/models` listing before rollout. `GOOGLE_API_KEY` is still needed for ingestion
+and query embeddings. `GOOGLE_CHAT_MODEL` is no longer used by chat code.
+
+| Role | Default model | Deadline | Output token cap |
+|---|---|---|---|
+| Router | `openai/gpt-oss-20b` | 10 seconds (wall clock) | 1024 |
+| RAG answer | `openai/gpt-oss-120b` | 45 seconds (HTTP timeout) | 2048 |
+| Synthesis | `qwen/qwen3.8-27b` | 20 seconds (wall clock) | 1536 |
+
+All clients disable automatic retries. A router HTTP 429 immediately selects
+keyword routing without backoff. Routing timeout/invalid JSON also use keywords.
+Synthesis timeout/429/provider failures retain every available agent answer in
+plain labeled sections with unavailable-agent information. RAG chat failures
+use existing retrieved snippets and citation validation. `grounded: true`
+describes retrieved evidence, not proof that a provider generated the prose.
+The output caps limit daily token use without changing retrieved evidence or
+embedding dimensions; reasoning tokens can consume the cap on reasoning models.
+
+Groq limits include tokens/minute and tokens/day as well as requests/day. The
+current published GPT-OSS free allowance is 200K tokens/day per model; at about
+3,300 total tokens per answer this is roughly 60 answers/day, not 1,000. Check
+[your account's active limits](https://console.groq.com/settings/limits), monitor
+usage, and tune caps based on observed answers. Short caps may produce empty
+or incomplete answers; the existing fallbacks remain available.
+
+For optional Ollama, run/pull your chosen local model and set all three model
+variables to its installed name:
+
+```dotenv
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_API_KEY=ollama
+LLM_MODEL_ROUTER=your-installed-model
+LLM_MODEL_ANSWER=your-installed-model
+LLM_MODEL_SYNTH=your-installed-model
+```
+
+Ollama requires no actual key, but the client needs a nonempty placeholder.
+Docker Desktop containers use `http://host.docker.internal:11434/v1`; Linux
+containers need a reachable host/service address. The factory is tested for
+this configuration; local model quality, speed, and provider behavior require
+live testing. Direct Python runs read process environment variables; Compose
+reads `.env` and forwards them to the containers.
+
+Rebuild the two affected images:
+
+```powershell
+docker compose --profile full up --build -d orchestrator rag-agent
+```
+
+For Kubernetes apply `k8s/chat-config.yaml`, manage `llm-api-key` and
+`google-api-key` in the existing `opsbrain-secrets` through your secret manager,
+and roll out rebuilt images. Override the ConfigMap for local endpoints or
+alternate models; no plaintext credentials belong in it. Existing database
+configuration remains a separate deployment prerequisite.
+
+Run offline tests and live validation from `opsbrain/`:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pytest tests -q
+python -m ruff check agents orchestrator shared scripts
+# Live: export LLM_* and GOOGLE_API_KEY into the process securely first.
+$env:PYTHONPATH = ".;agents"
+$env:RAG_AGENT_URL = "http://localhost:8001"
+$env:MONITORING_AGENT_URL = "http://localhost:8002"
+$env:INFRA_AGENT_URL = "http://localhost:8003"
+$env:CODE_AGENT_URL = "http://localhost:8004"
+python -m scripts.validate_chat
+# Existing validation additionally needs DATABASE_URL for host port 5434.
+python -m scripts.validate_rag --directory docs --api-directory /app/data
+python -m scripts.validate_rag --directory docs --api-directory /app/data --question "How do I handle exhausted database connections?" --expected-source runbook-db-connections.md
+```
+
+`validate_chat` writes `validation/opu80-live-results.json`; exit 2 means no
+credentials and no live checks executed. Its reconstructed question set covers
+both runbooks and all agent types. No original OPU-51 question set exists in this
+checkout or the issue's comments. The async implementation here uses HTTP;
+Kafka integration and the Monitoring Agent's missing `/query` remain prior
+integration gaps. See [validation/OPU-80.md](validation/OPU-80.md) for executed
+checks and remaining acceptance requirements.
+
 ### Prerequisites
 
 - **Docker Desktop** running, with Compose v2 (`docker compose`, not the old
   `docker-compose`).
-- A **Google AI Studio API key** (free tier, no credit card) — required for
-  the RAG agent. Get one at https://aistudio.google.com/apikey.
+- A **Google AI Studio API key** for RAG embeddings
+  (<https://aistudio.google.com/apikey>) and a **Groq API key** for chat
+  (<https://console.groq.com/keys>), or a reachable local Ollama chat endpoint.
 - Everything else (AWS credentials, a Kubernetes cluster, Terraform, a GitHub
   token) is **optional** and only needed for specific Infra/Code Agent
   features — covered in their sections below.
@@ -79,7 +179,8 @@ chat, or ticket.
 
 | Agent | Required | Optional (feature-gated) |
 |---|---|---|
-| **RAG** (8001) | `GOOGLE_API_KEY=<your-key>`<br>`POSTGRES_PASSWORD=<any-password>` (Postgres won't start without it) | `GOOGLE_EMBEDDING_MODEL`, `GOOGLE_CHAT_MODEL` (defaults are current and correct — see [§2](#2-rag-agent--port-8001)) |
+| **RAG** (8001) | `GOOGLE_API_KEY` for embeddings; `POSTGRES_PASSWORD` for Postgres | `LLM_API_KEY` enables generated answers; otherwise retrieved snippets. `LLM_BASE_URL`, `LLM_MODEL_ANSWER`, `GOOGLE_EMBEDDING_MODEL` configure providers. |
+| **Orchestrator** (8000) | none to start | `LLM_API_KEY` enables routing/synthesis; `LLM_BASE_URL`, `LLM_MODEL_ROUTER`, `LLM_MODEL_SYNTH` select providers/models. |
 | **Monitoring** (8002) | none — works with defaults against the local Prometheus/Alertmanager/Grafana containers | `GRAFANA_API_TOKEN=<token>` — only needed if you disable Grafana's anonymous access; the default Compose setup enables anonymous Admin access, so this can stay blank |
 | **Infra** (8003) | none to start the container | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` — for `/aws/*`<br>`KUBECONFIG` — for `/k8s/*` (see the real limitation in [§4](#4-infra-agent--port-8003) before setting this)<br>Terraform CLI is **not installed** in this container at all — `/terraform/plan` cannot work regardless of env vars, see §4 |
 | **Code** (8004) | none to start the container | `GITHUB_REPO=owner/repo` — required for every endpoint except `/health`<br>`GITHUB_TOKEN=<token>` — optional; without it you get unauthenticated GitHub API access (60 requests/hour, public repos only) |
@@ -213,13 +314,10 @@ defines; use `/health` or `/docs`.
 
 ## 2. RAG Agent — port 8001
 
-**Corrects outdated docs:** earlier versions of this README described the
-RAG agent as using OpenAI's GPT-4o and OpenAI embeddings. **The current
-implementation uses Google Gemini exclusively** via `langchain_google_genai`
-— there is no OpenAI code path in this agent at all
-(`agents/rag/agent.py`, `agents/rag/retriever.py`).
+The RAG agent uses Groq chat through the shared model factory and unchanged
+Google Gemini embeddings through `langchain_google_genai`.
 
-- **Chat model:** `gemini-3.6-flash` (env `GOOGLE_CHAT_MODEL`)
+- **Chat model:** `openai/gpt-oss-120b` (env `LLM_MODEL_ANSWER`)
 - **Embedding model:** `gemini-embedding-001`, 3072 dimensions (env
   `GOOGLE_EMBEDDING_MODEL`) — the Postgres table (`database/init.sql`) is
   hard-coded to `VECTOR(3072)` to match; changing the embedding model to one
@@ -232,7 +330,9 @@ implementation uses Google Gemini exclusively** via `langchain_google_genai`
 |---|---|---|---|
 | `GOOGLE_API_KEY` | *(required, no default)* | yes | |
 | `GOOGLE_EMBEDDING_MODEL` | `models/gemini-embedding-001` | yes | |
-| `GOOGLE_CHAT_MODEL` | `gemini-3.6-flash` | yes | |
+| `LLM_MODEL_ANSWER` | `openai/gpt-oss-120b` | yes | Chat model |
+| `LLM_BASE_URL` | `https://api.groq.com/openai/v1` | yes | Chat Completions endpoint |
+| `LLM_API_KEY` | blank | yes | Blank enables extractive chat fallback |
 | `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/opsbrain` | yes, overridden to the real container DSN | |
 | `PGVECTOR_TABLE` | `document_chunks` | **no** | not currently in `.env.example` or Compose — set it as a container env var if you need a different table name |
 | `RAG_DEFAULT_TOP_K` | `4` | **no** | **not** the same variable as `.env.example`'s `RAG_TOP_K` — that one currently has no effect (see note below) |
@@ -307,10 +407,9 @@ Invoke-RestMethod -Uri http://localhost:8001/query -Method Post -ContentType "ap
 - **Failure modes:** `400` if the question is too short or malformed; `503`
   if the LLM/embedding backend can't be reached or `GOOGLE_API_KEY` is
   missing; `500` for unexpected errors.
-- **Real limitation:** Google's free-tier `gemini-3.6-flash` is capped at
-  **20 requests/day per API key** (this project has hit that limit during
-  testing — `429 ResourceExhausted`). Each `/query` call uses at least one
-  embedding call plus one chat call against that quota.
+- **Provider limits:** each `/query` embeds through Google and answers through
+  Groq (when configured). Their quotas are independent. Chat 429/timeouts use
+  retrieved snippets; embedding failures still prevent retrieval.
 
 ### Tests and validation that actually exist on this branch
 
@@ -338,8 +437,8 @@ python -m scripts.validate_rag --base-url http://localhost:8001 --directory .\do
 This is a **live integration script**, not a unit test — it actually calls
 the running RAG API, ingests twice, checks the database directly via
 `psycopg`, and asks a real question. It requires: the stack running, a
-configured `GOOGLE_API_KEY`, and network access to Google's API — it will
-consume part of your daily quota. Note the two different `--directory`
+configured `GOOGLE_API_KEY` for embeddings, `LLM_API_KEY` for Groq chat, and
+network access to both APIs. Note the two different `--directory`
 flags: `--directory` is the path *this script* reads locally to compute
 expected chunk counts (point it at the host `docs\` folder), while
 `--api-directory` is the path *the RAG container* reads from (`/app/data`,
@@ -907,17 +1006,17 @@ $body = @{ question = "What should I do when CPU usage is high?" } | ConvertTo-J
 Invoke-RestMethod -Uri http://localhost:8000/ask -Method Post -ContentType "application/json" -Body $body
 ```
 
-**`/ask` currently forwards every question directly and only to the RAG
-agent's `/query`** (`orchestrator/main.py` — `RAG_AGENT_URL` is
-hard-coded, `httpx.post` straight to it). The response you get back is the
-RAG agent's own response shape verbatim (§2's `/query` fields), not an
-orchestrator-specific format. A `502` means the RAG agent itself returned an
-error or couldn't be reached.
+`/ask` invokes the asynchronous LangGraph pipeline: Groq routing (or keyword
+fallback), concurrent HTTP agent queries, then Groq synthesis for multiple
+successful answers (or labeled-sections fallback). Responses use the
+`AskResponse` contract: `answer`, `sources`, `routing`, `results`, `status`,
+and `request_id`. Partial failures retain available answers; all-agent failure
+returns HTTP 502. Optional `session_id` enables bounded in-process history.
 
-### Calling Infra and Code directly (the orchestrator doesn't route to them)
+### Calling Infra and Code directly
 
-Since `/ask` only ever talks to RAG, use the agents' own ports directly for
-infra/code questions — same PowerShell patterns as §4/§5:
+You can also bypass routing using the agents' own ports — same PowerShell
+patterns as §4/§5:
 
 ```powershell
 Invoke-RestMethod -Uri http://localhost:8003/query -Method Post -ContentType "application/json" -Body (@{ question = "what instances are running?" } | ConvertTo-Json)
@@ -928,17 +1027,11 @@ Invoke-RestMethod -Uri http://localhost:8004/query -Method Post -ContentType "ap
 
 Verified directly against `orchestrator/graph.py` and `orchestrator/router.py`:
 
-- `orchestrator/router.py::route()` is a hard-coded stub — its docstring
-  says it will use an LLM classifier "in Stage 2," but right now it always
-  returns `["rag"]` regardless of input, and **`orchestrator/main.py` doesn't
-  even call it** — `/ask` bypasses `router.py` entirely.
-- `orchestrator/graph.py` defines a LangGraph state machine
-  (`route_node` → `gather_node` → `synthesise_node`) intended to fan out to
-  multiple agents and merge their answers — but **nothing in `main.py`
-  imports or invokes this graph at all.** `gather_node` and
-  `synthesise_node` are literal placeholder stubs (`# TODO Stage 2`) that
-  return an empty dict and the string `"Orchestrator synthesis not yet
-  implemented."`, respectively.
+- Monitoring exposes specialized endpoints but no contract-compatible `/query`;
+  routed monitoring requests therefore fail rather than returning a synthesized
+  metrics answer. The graph reports this agent as unavailable.
+- Conversation history is in-process; multiple orchestrator replicas need
+  sticky sessions or a shared memory store.
 - **Kafka fan-out**: `shared/kafka_client.py` is **no longer a print-only
   stub** — `KafkaProducer`/`KafkaConsumer` now wrap real `kafka-python`
   calls (`send()` blocks until the broker acknowledges;
@@ -951,9 +1044,8 @@ Verified directly against `orchestrator/graph.py` and `orchestrator/router.py`:
   container runs in Compose, and you *can* talk to it using this client,
   but no running service does so automatically today.
 
-In short: multi-agent routing and response synthesis are still skeleton
-code. Kafka messaging has a real, tested client now — the gap that's left
-is wiring any agent to actually use it.
+Multi-agent routing and synthesis run over asynchronous HTTP. Kafka integration
+and the monitoring query adapter remain gaps; see OPU-80 validation evidence.
 
 ---
 
@@ -984,7 +1076,7 @@ should show exactly the two fake demo pods (`api-0`, `worker-0`), not zero
 and not more than two — those are the only fixtures the demo exporter
 provides.
 
-### Requires a configured `GOOGLE_API_KEY` (consumes daily Gemini quota)
+### Requires `GOOGLE_API_KEY` for embeddings and `LLM_API_KEY` for Groq answers
 
 ```powershell
 Invoke-RestMethod -Uri http://localhost:8001/ingest -Method Post -ContentType "application/json" -Body (@{ directory = "/app/data" } | ConvertTo-Json)
@@ -1181,18 +1273,18 @@ User (CLI / Slack — not built yet)
 | **Monitoring** | Real Prometheus/Grafana/Alertmanager integration, verified UIDs, alert summaries, pod health from a fake demo exporter | No real Kubernetes cluster behind `/pods/health`; agents don't expose `/metrics` themselves yet |
 | **Infra** | Real AWS (boto3: EC2/EKS/RDS), real Kubernetes client (pods/nodes/deployments/resource usage), real Terraform-state-reading logic, an aggregate health-summary endpoint, graceful degradation everywhere, moto-based test coverage for the AWS calls | Kubeconfig isn't actually mountable as shipped; Terraform CLI isn't installed; `/terraform/plan` never generates a plan, only displays one; K8s-side methods have no unit tests, only manual verification |
 | **Code** | Real GitHub REST API integration — PRs, commits, deployments, check-run status, Actions runs, and two real mutating actions (rerun a run, dispatch a workflow) | Check-runs only (not the older combined-status API); no test coverage at all; `workflow_dispatch` triggering only works against workflows that declare that trigger (this repo's own CI doesn't) |
-| **Orchestrator** | `/health`, and forwarding `/ask` to RAG | Routing (`router.py`) and multi-agent fan-out/synthesis (`graph.py`) are still skeleton/stub code, not connected to `main.py`. Kafka messaging (`shared/kafka_client.py`) is now a real, tested client — but still not imported by any agent or the orchestrator |
+| **Orchestrator** | `/health`, `/ask`, Groq routing, concurrent HTTP fan-out, synthesis, keyword/labeled fallbacks, bounded session history | Monitoring has no `/query`; Kafka client is not wired into the pipeline; memory is per replica |
 
 ### Project structure
 
 ```
 opsbrain/
 ├── agents/
-│   ├── rag/          ← fully implemented (Gemini, not OpenAI)
+│   ├── rag/          ← Groq answers, Gemini embeddings, pgvector retrieval
 │   ├── monitoring/   ← fully implemented (against real Prometheus/Grafana/Alertmanager)
 │   ├── infra/         ← implemented, with the real limitations in §4
 │   └── code/          ← implemented, with the real limitations in §5
-├── orchestrator/      ← /health + RAG-only /ask; router.py/graph.py unused skeletons
+├── orchestrator/      ← /health + asynchronous multi-agent /ask
 ├── shared/             ← models.py/config.py/kafka_client.py — kafka_client.py is now a real, tested Kafka producer/consumer; still not imported by any agent
 ├── infra/terraform/  ← Terraform IaC definitions (not yet applied to any real AWS account)
 ├── infra/prometheus/, infra/grafana/, infra/alertmanager/ ← real local monitoring stack config
@@ -1207,13 +1299,13 @@ opsbrain/
 
 ### Roadmap (honest state, not aspirational)
 
-- [x] RAG Agent — real Gemini-backed ingest/retrieve/answer
+- [x] RAG Agent — Gemini embeddings with Groq-backed answers
 - [x] Monitoring Agent — real Prometheus/Grafana/Alertmanager integration
 - [x] Infra Agent — real AWS (EC2/EKS/RDS)/K8s (pods/nodes/deployments/usage)/Terraform-reading logic, an aggregate health summary, with documented setup gaps
 - [x] Code Agent — real GitHub PR/commits/deployments/Actions integration, plus two real mutating actions (rerun a run, dispatch a workflow)
 - [x] Kafka producer/consumer — real `kafka-python`-backed client in `shared/kafka_client.py`, verified against a live broker
 - [x] CI pipeline — lint, test, build, and publish images to GHCR (see the repo-root `.github/workflows/ci-cd.yml`); the `deploy` stage's working-directory bug is fixed, though it still can't succeed end-to-end until the next item below is done
-- [ ] Orchestrator multi-agent routing and answer synthesis (`router.py`/`graph.py` are stubs)
+- [x] Orchestrator HTTP multi-agent routing and answer synthesis (live Groq verification pending; see `validation/OPU-80.md`)
 - [ ] Wiring any agent to actually publish/consume through `shared/kafka_client.py` — the client itself works, nothing calls it yet
 - [x] `/metrics` endpoints, Grafana dashboards, Loki logging, and alert rules (OPU-56)
 - [ ] Kubeconfig mounting for the Infra Agent (§4, Limitation 2)

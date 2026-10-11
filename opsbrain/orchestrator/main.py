@@ -19,7 +19,7 @@ from orchestrator.graph import build_orchestrator_graph
 from orchestrator.llm import get_llm
 from orchestrator.memory import SessionMemory
 from shared.models import AskRequest, AskResponse
-from shared.observability import WORKFLOWS, WORKFLOW_DURATION, instrument_app
+from shared.observability import WORKFLOW_DURATION, WORKFLOWS, instrument_app
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +31,7 @@ memory = SessionMemory()
 
 @lru_cache(maxsize=1)
 def get_graph():
-    llm = get_llm()
-    if llm is None:
-        logger.warning("GOOGLE_API_KEY not set — routing by keywords, no LLM synthesis.")
-    return build_orchestrator_graph(llm=llm)
+    return build_orchestrator_graph(llm=get_llm("router"), synth_llm=get_llm("synth"))
 
 
 @app.get("/health")

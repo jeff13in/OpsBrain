@@ -108,8 +108,21 @@ def _observe_agent_result(agent: AgentName, status: str, started: float) -> None
     AGENT_DURATION.labels(agent).observe(time.monotonic() - started)
 
 
-def build_orchestrator_graph(llm: Any | None = None, transport: httpx.AsyncBaseTransport | None = None):
-    """Compile the graph. `llm` and `transport` are injectable for tests."""
+_USE_ROUTER_MODEL = object()
+
+
+def build_orchestrator_graph(
+    llm: Any | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    *,
+    synth_llm: Any = _USE_ROUTER_MODEL,
+):
+    """Compile the graph with independently injectable router/synthesis models.
+
+    Existing callers injecting one fake LLM continue to use it for both roles.
+    Production supplies synth_llm explicitly, including None on config failure.
+    """
+    synthesis_model = llm if synth_llm is _USE_ROUTER_MODEL else synth_llm
 
     async def route_node(state: OrchestratorState) -> OrchestratorState:
         question = state["question"]
@@ -137,8 +150,8 @@ def build_orchestrator_graph(llm: Any | None = None, transport: httpx.AsyncBaseT
         ok = [r for r in results if r.status == "ok"]
 
         answer = None
-        if llm is not None and len(ok) >= 2:
-            answer = await llm_ops.synthesise(llm, state["agent_question"], results)
+        if synthesis_model is not None and len(ok) >= 2:
+            answer = await llm_ops.synthesise(synthesis_model, state["agent_question"], results)
         return {
             "status": overall_status(results),
             "final_answer": answer or fallback_answer(results),

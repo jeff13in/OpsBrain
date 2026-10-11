@@ -37,7 +37,7 @@ class RAGAgentTests(unittest.TestCase):
         )
         agent = RAGAgent(retriever=retriever)
 
-        with patch("rag.agent.ChatGoogleGenerativeAI", None):
+        with patch.dict("os.environ", {"LLM_API_KEY": ""}):
             response = agent.ask("How should I handle high CPU usage?")
 
         self.assertTrue(response.grounded)
@@ -48,7 +48,7 @@ class RAGAgentTests(unittest.TestCase):
     def test_reports_ungrounded_when_nothing_is_retrieved(self) -> None:
         agent = RAGAgent(retriever=FakeRetriever([]))
 
-        with patch("rag.agent.ChatGoogleGenerativeAI", None):
+        with patch.dict("os.environ", {"LLM_API_KEY": ""}):
             response = agent.ask("How should I handle high CPU usage?")
 
         self.assertFalse(response.grounded)

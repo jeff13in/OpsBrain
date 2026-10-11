@@ -25,11 +25,16 @@ spec:
             - name: http
               containerPort: 8001
           env:
-            - name: OPENAI_API_KEY
+            - name: GOOGLE_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: opsbrain-secrets
-                  key: openai-api-key
+                  key: google-api-key
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: opsbrain-secrets
+                  key: llm-api-key
             - name: POSTGRES_HOST
               value: "postgres-service"
             - name: POSTGRES_PASSWORD
@@ -37,6 +42,9 @@ spec:
                 secretKeyRef:
                   name: opsbrain-secrets
                   key: postgres-password
+          envFrom:
+            - configMapRef:
+                name: opsbrain-chat
           resources:
             requests:
               cpu: "250m"

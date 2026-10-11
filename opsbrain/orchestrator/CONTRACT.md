@@ -32,9 +32,16 @@ POST /ask  AskRequest{question, session_id?}
 - `route()` always returns at least one agent; nothing matched → `rag` (`method="fallback"`).
 - Agents are returned in registry order: `rag, monitoring, infra, code`.
 - Keyword match is whole-word (`pr` doesn't match `prometheus`).
-- With `GOOGLE_API_KEY` set, a Gemini classifier routes (`method="llm"`) and rewrites
-  follow-ups using the session history. Any LLM failure, unparseable reply, or empty/unknown
-  agent list falls back to keyword routing. Without a key, routing is always by keyword.
+- With `LLM_API_KEY` set, `get_chat_model("router")` classifies (`method="llm"`)
+  and rewrites follow-ups using session history. Its default is Groq
+  `openai/gpt-oss-20b`. Calls have a 10-second wall-clock deadline and zero SDK
+  retries. HTTP 429 immediately falls back to keywords, without backoff (under
+  one second of fallback overhead after the error is received). Timeout,
+  malformed JSON, invalid schema, and empty/unknown agent lists also fall back.
+- `LLM_BASE_URL` selects an OpenAI-compatible Chat Completions endpoint. All
+  three roles use the shared factory in `shared/llm.py`; model names are
+  configured independently with `LLM_MODEL_ROUTER`, `LLM_MODEL_ANSWER`, and
+  `LLM_MODEL_SYNTH`. Invalid/missing chat settings enable deterministic fallback.
 - Each agent has a URL (overridable via `<NAME>_AGENT_URL`) and timeout in `AGENT_REGISTRY`
   (RAG 60s, others 30s).
 
@@ -82,6 +89,19 @@ agent's whole time budget, so it isn't retried.
     one `[agent]` section per success plus an `Unavailable: …` line.
 - **results** are listed in routing order, whatever order the parallel calls finished in.
 
+Synthesis uses `get_chat_model("synth")`, default `qwen/qwen3.8-27b`, with a
+20-second wall-clock deadline and zero retries. HTTP 429, timeout, empty replies,
+and provider failures return `fallback_answer()`'s existing labeled sections.
+Successful synthesis retains known source citations and a deterministic
+unavailable-agent line even if the model omits them. The response contract and
+per-agent HTTP retry policy above are unchanged.
+
+RAG chat uses `get_chat_model("answer")`, default `openai/gpt-oss-120b`, with
+a 45-second request timeout and no retries. Missing settings/provider failures
+use retrieved snippets. `grounded` describes retrieval/citation validation, not
+proof that the chat provider generated the answer. Gemini embeddings remain
+`models/gemini-embedding-001` and 3072-dimensional; no schema or ingestion changes.
+
 ## 6. Conversation memory
 
 Pass the same `session_id` on each `/ask` to keep context. The last 6 question/answer pairs
@@ -101,5 +121,7 @@ recently used are evicted). Failed (`error`) turns aren't remembered.
 4. **Memory is per process.** `k8s/orchestrator.yaml` runs 2 replicas, so a session's next
    turn can land on a pod that never saw it. This needs sticky sessions or a shared store
    (Postgres/Redis) before deploying (OPU-54).
-5. **`k8s/orchestrator.yaml` still passes `OPENAI_API_KEY`.** The orchestrator now uses
-   `GOOGLE_API_KEY` (OPU-54).
+5. **Deployment secrets:** the orchestrator and RAG use `LLM_API_KEY` from
+   `opsbrain-secrets/llm-api-key`; RAG also needs
+   `opsbrain-secrets/google-api-key` for unchanged Gemini embeddings. Apply
+   `k8s/chat-config.yaml` before deploying the updated images.

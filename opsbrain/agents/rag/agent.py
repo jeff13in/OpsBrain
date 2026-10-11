@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any, TypedDict
@@ -14,11 +14,13 @@ except ImportError:  # pragma: no cover - handled with sequential fallback
 
 try:
     from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_google_genai import ChatGoogleGenerativeAI
 except ImportError:  # pragma: no cover - handled with extractive fallback
-    HumanMessage = SystemMessage = ChatGoogleGenerativeAI = None
+    HumanMessage = SystemMessage = None
 
 from rag.retriever import PgVectorRetriever, RetrievedChunk, RetrieverConfig
+from shared.llm import ChatConfigurationError, get_chat_model
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are the OpsBrain RAG agent for DevOps runbooks.
 Answer the user using only the retrieved context.
@@ -161,7 +163,11 @@ class RAGAgent:
             }
 
         if self._llm_available():
-            answer = self._generate_with_llm(state["question"], state["context"])
+            try:
+                answer = self._generate_with_llm(state["question"], state["context"])
+            except Exception as exc:  # noqa: BLE001 - preserve retrieved evidence on provider failure
+                logger.warning("Chat answer generation failed; using retrieved snippets: %s", type(exc).__name__)
+                answer = self._fallback_answer(state["question"], chunks, errors)
         else:
             answer = self._fallback_answer(state["question"], chunks, errors)
 
@@ -174,16 +180,18 @@ class RAGAgent:
         }
 
     def _llm_available(self) -> bool:
-        return ChatGoogleGenerativeAI is not None and bool(os.getenv("GOOGLE_API_KEY"))
+        if self._llm is not None:
+            return True
+        try:
+            self._llm = get_chat_model("answer")
+        except ChatConfigurationError:
+            return False
+        return True
 
     def _generate_with_llm(self, question: str, context: str) -> str:
         llm = self._llm
         if llm is None:
-            llm = ChatGoogleGenerativeAI(
-                model=os.getenv("GOOGLE_CHAT_MODEL", "gemini-3.6-flash"),
-                temperature=0,
-                max_output_tokens=4096,
-            )
+            llm = get_chat_model("answer")
             self._llm = llm
 
         response = llm.invoke(
@@ -199,7 +207,7 @@ class RAGAgent:
         )
         content = getattr(response, "content", response)
         if isinstance(content, list):
-            return " ".join(str(part) for part in content).strip()
+            return " ".join(str(part.get("text", "")) if isinstance(part, dict) else str(part) for part in content).strip()
         return str(content).strip()
 
     def _fallback_answer(
@@ -247,5 +255,5 @@ class RAGAgent:
             citations = CITATION_PATTERN.findall(cleaned)
 
         if allowed_sources and not citations:
-            cleaned = cleaned.rstrip() + "\n\nSources: " + ", ".join(sorted(allowed_sources))
+            cleaned = cleaned.rstrip() + "\n\nSources: " + ", ".join(f"[{source}]" for source in sorted(allowed_sources))
         return cleaned

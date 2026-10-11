@@ -1,0 +1,8 @@
+[
+  {"id":"high-cpu","question":"What should I do when CPU usage is high?","agents":["rag"],"expected_source":"runbook-high-cpu.md"},
+  {"id":"db-connections","question":"How do I handle exhausted database connections?","agents":["rag"],"expected_source":"runbook-db-connections.md"},
+  {"id":"monitoring","question":"Are any alerts firing?","agents":["monitoring"]},
+  {"id":"infra","question":"What Kubernetes pods are running?","agents":["infra"]},
+  {"id":"code","question":"Are there any open pull requests?","agents":["code"]},
+  {"id":"multi-agent","question":"Use runbooks, metrics, Kubernetes pods and GitHub pull requests to investigate high CPU.","agents":["rag","monitoring","infra","code"]}
+]

@@ -25,11 +25,14 @@ spec:
             - name: http
               containerPort: 8000
           env:
-            - name: OPENAI_API_KEY
+            - name: LLM_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: opsbrain-secrets
-                  key: openai-api-key
+                  key: llm-api-key
+          envFrom:
+            - configMapRef:
+                name: opsbrain-chat
           resources:
             requests:
               cpu: "250m"

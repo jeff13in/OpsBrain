@@ -9,8 +9,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from rag.agent import AgentResponse, RAGAgent
-from shared.observability import instrument_app
 from rag.ingestor import IngestionResult, PgVectorIngestor
+from shared.observability import instrument_app
 
 logger = logging.getLogger(__name__)
 

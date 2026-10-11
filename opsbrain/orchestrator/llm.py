@@ -6,20 +6,21 @@ graph falls back to the deterministic rules in router.py / contract.py.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import os
 import re
 from typing import Any
 
-from orchestrator.router import AGENT_REGISTRY
-from shared.models import AgentResult, RoutingDecision
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
 
-try:
-    from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_google_genai import ChatGoogleGenerativeAI
-except ImportError:  # pragma: no cover - orchestrator still works on keyword routing
-    HumanMessage = SystemMessage = ChatGoogleGenerativeAI = None
+from orchestrator.router import AGENT_REGISTRY
+from shared.llm import ChatConfigurationError, ChatRole, get_chat_model
+from shared.models import AgentName, AgentResult, RoutingDecision
+
+ROUTING_TIMEOUT_SECONDS = 10.0
+SYNTHESIS_TIMEOUT_SECONDS = 20.0
 
 logger = logging.getLogger(__name__)
 
@@ -40,16 +41,19 @@ Combine their answers into one concise reply. Use only what the agents said; don
 Keep source citations in square brackets. If some agents were unavailable, say what is missing."""
 
 
-def get_llm() -> Any | None:
-    if ChatGoogleGenerativeAI is None or not os.getenv("GOOGLE_API_KEY"):
+def get_llm(role: ChatRole = "router") -> Any | None:
+    """Resolve one chat role; missing configuration enables existing fallbacks."""
+    try:
+        return get_chat_model(role)
+    except ChatConfigurationError:
+        logger.warning("Chat configuration unavailable for %s; using deterministic fallback.", role)
         return None
-    # max_output_tokens leaves room for the "thinking" model's hidden reasoning
-    # (see memory.md — unset, it can return empty content).
-    return ChatGoogleGenerativeAI(
-        model=os.getenv("GOOGLE_CHAT_MODEL", "gemini-3.6-flash"),
-        temperature=0,
-        max_output_tokens=4096,
-    )
+
+
+class RouterReply(BaseModel):
+    agents: list[AgentName] = Field(min_length=1)
+    standalone_question: str | None = Field(default=None, min_length=1, max_length=2000)
+    reason: str = ""
 
 
 def _text(response: Any) -> str:
@@ -76,11 +80,14 @@ async def classify(llm: Any, question: str, history: list[dict[str, str]]) -> tu
     prompt = f"Conversation so far:\n{_format_history(history)}\n\n" if history else ""
     prompt += f"Latest question:\n{question}"
     try:
-        reply = await llm.ainvoke([SystemMessage(content=ROUTER_PROMPT.format(agents=agents)), HumanMessage(content=prompt)])
-        parsed = _parse_json(_text(reply))
-        names = [a for a in AGENT_REGISTRY if a in parsed.get("agents", [])]  # registry order, unknown names dropped
-        decision = RoutingDecision(agents=names, method="llm", reason=str(parsed.get("reason", ""))[:300])
-        standalone = str(parsed.get("standalone_question") or question).strip()[:2000]
+        async with asyncio.timeout(ROUTING_TIMEOUT_SECONDS):
+            reply = await llm.ainvoke([SystemMessage(content=ROUTER_PROMPT.format(agents=agents)), HumanMessage(content=prompt)])
+        parsed = RouterReply.model_validate(_parse_json(_text(reply)))
+        names = [a for a in AGENT_REGISTRY if a in parsed.agents]
+        decision = RoutingDecision(agents=names, method="llm", reason=parsed.reason[:300])
+        standalone = (parsed.standalone_question or question).strip()
+        if not standalone:
+            raise ValueError("empty standalone question")
         return decision, standalone
     except Exception as exc:  # noqa: BLE001 - any LLM/parse failure means "use keywords"
         logger.warning("LLM routing failed, falling back to keywords: %s", exc.__class__.__name__)
@@ -96,11 +103,22 @@ async def synthesise(llm: Any, question: str, results: list[AgentResult]) -> str
         else:
             sections.append(f"[{r.agent}] UNAVAILABLE ({r.error.code if r.error else r.status})")
     try:
-        reply = await llm.ainvoke([
-            SystemMessage(content=SYNTH_PROMPT),
-            HumanMessage(content=f"Question:\n{question}\n\nAgent answers:\n\n" + "\n\n".join(sections)),
-        ])
-        return _text(reply) or None
+        async with asyncio.timeout(SYNTHESIS_TIMEOUT_SECONDS):
+            reply = await llm.ainvoke([
+                SystemMessage(content=SYNTH_PROMPT),
+                HumanMessage(content=f"Question:\n{question}\n\nAgent answers:\n\n" + "\n\n".join(sections)),
+            ])
+        answer = _text(reply)
+        if not answer:
+            return None
+        sources = dict.fromkeys(source for r in results if r.status == "ok" for source in r.sources)
+        missing_citations = [f"[{source}]" for source in sources if f"[{source}]" not in answer]
+        if missing_citations:
+            answer += "\n\nSources: " + ", ".join(missing_citations)
+        unavailable = [f"{r.agent} ({r.error.code if r.error else r.status})" for r in results if r.status != "ok"]
+        if unavailable:
+            answer += "\n\nUnavailable: " + ", ".join(unavailable) + "."
+        return answer
     except Exception as exc:  # noqa: BLE001 - any LLM failure means "use fallback_answer"
         logger.warning("LLM synthesis failed, using fallback answer: %s", exc.__class__.__name__)
         return None

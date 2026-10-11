@@ -1,7 +1,8 @@
 """Validate the running local RAG API and persisted vectors using real services.
 
 Run from the repo root: python -m scripts.validate_rag
-Requires DATABASE_URL, a running RAG API, and its configured Google API key.
+Requires DATABASE_URL, a running RAG API, GOOGLE_API_KEY for embeddings,
+and LLM_API_KEY for Groq chat (or the configured Ollama endpoint).
 Reingests the selected directory twice (replacing its existing source chunks).
 """
 

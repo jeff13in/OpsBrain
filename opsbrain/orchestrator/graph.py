@@ -12,6 +12,8 @@ Rules for every step are in orchestrator/CONTRACT.md.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import operator
 import time
 from typing import Annotated, Any, TypedDict
@@ -40,6 +42,8 @@ from shared.models import (
     RoutingDecision,
 )
 from shared.observability import AGENT_DURATION, AGENT_EXECUTIONS
+
+logger = logging.getLogger(__name__)
 
 
 class OrchestratorState(TypedDict, total=False):
@@ -94,7 +98,8 @@ async def call_agent(
                         return result
                     body = reply.body
                 else:
-                    resp = await client.post(f"{spec.url}{spec.query_path}", json=query.model_dump())
+                    async with asyncio.timeout(spec.timeout_s):
+                        resp = await client.post(f"{spec.url}{spec.query_path}", json=query.model_dump())
                     resp.raise_for_status()
                     try:
                         body = resp.json()
@@ -118,6 +123,8 @@ def _elapsed_ms(started: float) -> int:
 
 
 def _observe_agent_result(agent: AgentName, status: str, started: float) -> None:
+    if status != "ok":
+        logger.warning("Agent %s completed with %s after %dms.", agent, status, _elapsed_ms(started))
     AGENT_EXECUTIONS.labels(agent, status).inc()
     AGENT_DURATION.labels(agent).observe(time.monotonic() - started)
 

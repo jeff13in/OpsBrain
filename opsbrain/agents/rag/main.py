@@ -6,6 +6,7 @@ import logging
 from functools import lru_cache
 
 from fastapi import FastAPI, HTTPException
+from psycopg import OperationalError
 from pydantic import BaseModel, Field
 
 from rag.agent import AgentResponse, RAGAgent
@@ -31,11 +32,11 @@ class QueryRequest(BaseModel):
 
 
 class QueryResponse(BaseModel):
-    answer: str
+    answer: str = Field(min_length=1)
     sources: list[str]
     grounded: bool
     validation_errors: list[str]
-    retrieved_chunks: int
+    retrieved_chunks: int = Field(ge=0)
 
 
 class HealthResponse(BaseModel):
@@ -94,16 +95,24 @@ def query_rag(request: QueryRequest) -> QueryResponse:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (RuntimeError, TimeoutError, ConnectionError, OperationalError) as exc:
+        logger.warning("RAG dependency unavailable (%s).", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="RAG dependency unavailable.") from exc
     except Exception as exc:  # pragma: no cover - safety net for service failures
-        logger.exception("RAG query failed.")
+        logger.warning("RAG query failed (%s).", type(exc).__name__)
         raise HTTPException(status_code=500, detail="Failed to query the RAG agent.") from exc
 
-    return QueryResponse(
-        answer=response.answer,
-        sources=response.sources,
-        grounded=response.grounded,
-        validation_errors=response.validation_errors,
-        retrieved_chunks=response.retrieved_chunks,
-    )
+    try:
+        reply = QueryResponse(
+            answer=response.answer,
+            sources=response.sources,
+            grounded=response.grounded,
+            validation_errors=response.validation_errors,
+            retrieved_chunks=response.retrieved_chunks,
+        )
+        if not reply.answer.strip():
+            raise ValueError("Empty agent answer.")
+        return reply
+    except Exception as exc:  # invalid backend output is not invalid user input
+        logger.warning("Invalid RAG response (%s).", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="RAG returned an invalid response.") from exc

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
@@ -11,7 +13,10 @@ from pydantic import BaseModel, Field
 
 from monitoring.agent import MonitoringAgent, MonitoringClientError
 from shared.agent_bus import attach_kafka_worker
+from shared.models import AgentReply
 from shared.observability import instrument_app
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="OpsBrain Monitoring Agent",
@@ -86,11 +91,24 @@ def query(request: QueryRequest) -> dict[str, Any]:
     """Orchestrator entry point. 503 when Prometheus/Alertmanager can't be queried —
     never a 200 with the error as the answer."""
     try:
-        return get_agent().ask(request.question)
+        reply = get_agent().ask(request.question)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except MonitoringClientError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (MonitoringClientError, TimeoutError, ConnectionError) as exc:
+        logger.warning("Monitoring dependency unavailable (%s).", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Monitoring dependency unavailable.") from exc
+    except Exception as exc:  # contain backend crashes at the service boundary
+        logger.warning("Monitoring query failed (%s).", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Failed to query the Monitoring agent.") from exc
+    try:
+        validated = AgentReply.model_validate(reply)
+        if not validated.answer.strip():
+            raise ValueError("Empty agent answer.")
+        json.dumps(reply, allow_nan=False)
+    except Exception as exc:  # validate serialization before returning success
+        logger.warning("Invalid Monitoring response (%s).", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Monitoring returned an invalid response.") from exc
+    return reply
 
 
 @app.post("/metrics/query")

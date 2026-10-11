@@ -23,13 +23,21 @@ logger = logging.getLogger(__name__)
 def serialize_message(message: BaseModel | dict[str, Any]) -> bytes:
     """Turn a Pydantic model or plain dict into the bytes that go on the wire."""
     if isinstance(message, BaseModel):
-        return message.model_dump_json().encode("utf-8")
-    return json.dumps(message).encode("utf-8")
+        message = message.model_dump(mode="json")
+    if not isinstance(message, dict):
+        raise TypeError("Kafka messages must be JSON objects.")
+    return json.dumps(message, allow_nan=False).encode("utf-8")
 
 
 def deserialize_message(raw: bytes) -> dict[str, Any]:
     """Turn wire bytes back into a plain dict (callers validate into a model if needed)."""
-    return json.loads(raw.decode("utf-8"))
+    def invalid_constant(value: str) -> None:
+        raise ValueError("Non-finite values are not valid Kafka JSON.")
+
+    message = json.loads(raw.decode("utf-8"), parse_constant=invalid_constant)
+    if not isinstance(message, dict):
+        raise TypeError("Kafka messages must be JSON objects.")
+    return message
 
 
 def _deserialize_or_none(raw: bytes) -> dict[str, Any] | None:
@@ -37,8 +45,8 @@ def _deserialize_or_none(raw: bytes) -> dict[str, Any] | None:
     raising inside poll(), which would stop the consumer on that offset for good."""
     try:
         return deserialize_message(raw)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        logger.warning("Dropping a Kafka message that isn't UTF-8 JSON.")
+    except (ValueError, TypeError, AttributeError, RecursionError):
+        logger.warning("Dropping a Kafka message that isn't a valid UTF-8 JSON object.")
         return None
 
 
@@ -105,7 +113,10 @@ class KafkaConsumer:
             for records in batches.values():
                 for record in records:
                     if record.value is not None:
-                        handler(record.value)
+                        try:
+                            handler(record.value)
+                        except Exception as exc:  # noqa: BLE001 - one bad record must not stop consumption
+                            logger.warning("Kafka handler failed on %s (%s); continuing.", self.topic, type(exc).__name__)
 
     def close(self) -> None:
         self._consumer.close()

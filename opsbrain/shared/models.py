@@ -136,16 +136,16 @@ class AskResponse(BaseModel):
 
 class KafkaAgentRequest(BaseModel):
     """AgentQuery envelope with reply correlation and an absolute deadline."""
-    correlation_id: str
+    correlation_id: str = Field(min_length=1, max_length=128)
     agent: AgentName
     query: AgentQuery
-    reply_topic: str
-    deadline: float
+    reply_topic: str = Field(min_length=1, max_length=249, pattern=r"^[A-Za-z0-9._-]+$")
+    deadline: float = Field(gt=0, allow_inf_nan=False)
 
 
 class KafkaAgentReply(BaseModel):
     """The agent's HTTP-equivalent status/body transported over Kafka."""
-    correlation_id: str
+    correlation_id: str = Field(min_length=1, max_length=128)
     agent: AgentName
-    status_code: int
+    status_code: int = Field(ge=100, le=599, strict=True)
     body: Any = None

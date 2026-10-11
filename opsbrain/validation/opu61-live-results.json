@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-10-11T04:12:56.644677+00:00",
+  "mode": "real-kafka-real-rag-monitoring-handlers-injected-backends-no-model-calls",
+  "topic_prefix": "opsbrain.validation.0ee2eae32c3a.",
+  "checks": [
+    {
+      "name": "poison-messages-do-not-stop-worker",
+      "status": "passed"
+    },
+    {
+      "name": "mixed-parallel-failures-retain-success",
+      "status": "passed"
+    },
+    {
+      "name": "agent-recovers-after-failed-response",
+      "status": "passed"
+    },
+    {
+      "name": "eight-concurrent-replies-stay-correlated",
+      "status": "passed"
+    },
+    {
+      "name": "real-rag-dependency-failure-and-recovery",
+      "status": "passed"
+    },
+    {
+      "name": "real-monitoring-dependency-failure-and-recovery",
+      "status": "passed"
+    },
+    {
+      "name": "wrong-agent-reply-rejected",
+      "status": "passed"
+    },
+    {
+      "name": "shutdown-fails-pending-request",
+      "status": "passed"
+    }
+  ],
+  "seconds": 7.451
+}

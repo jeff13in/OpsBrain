@@ -83,6 +83,15 @@ With `AGENT_TRANSPORT=kafka` the same `/query` call travels over Kafka (`shared/
   so section 3 applies unchanged and the Orchestrator maps replies with the same rules as HTTP.
 - `deadline` is when the Orchestrator stops waiting; agents skip requests past it.
 - Malformed messages are logged and dropped, never fatal to a consumer.
+- Wire messages must be UTF-8 JSON objects; invalid JSON, scalar/array messages
+  and non-finite numbers are rejected. Envelope validation requires a finite
+  positive deadline, nonempty correlation/topic and a valid HTTP reply status.
+- A reply must match both the pending correlation ID and its expected agent;
+  malformed, mismatched, duplicate and late replies cannot complete another call.
+- Agent exceptions or unserializable results produce a safe 500 reply envelope.
+  One handler failure is logged without its payload and does not stop consumption.
+- Request cancellation removes pending state. Bus shutdown or loss of the reply
+  consumer fails pending requests as `unavailable` instead of leaving them waiting.
 - Kafka refusing the publish, or the Orchestrator not being connected yet, is `unavailable`
   (retried once). An agent that's down simply never replies, so it shows up as `timeout`, not
   `unavailable` as it would over HTTP.
@@ -102,6 +111,21 @@ Every agent call ends in an `AgentResult`; the Orchestrator never raises because
 
 Retryable failures other than `timeout` get **one** retry. A timeout already used up the
 agent's whole time budget, so it isn't retried.
+
+HTTP agent calls have a wall-clock deadline in addition to httpx's transport
+timeouts. Kafka publishing and reply waiting share the same per-attempt agent
+budget. Cancelling a thread-backed publish or synchronous backend operation
+does not forcibly stop that underlying thread; expired requests and late replies
+are ignored. Models, router/synthesis deadlines and provider retry policy are
+independent of this transport hardening (OPU-60/62).
+
+RAG and Monitoring also validate successful `/query` output at their service
+boundaries (OPU-61). Empty/malformed output and unserializable Monitoring data
+return safe HTTP 500 errors, not successful answers. Dependency connection/read
+failures return HTTP 503; RAG database connection failures do too. Valid answers
+retain their existing sources, grounding/retrieval metadata and topic data.
+Backend exception text is not exposed in these 500/503 responses or their logs.
+Existing invalid-request validation and user-input errors remain 422/400.
 
 ## 5. Aggregation rules
 

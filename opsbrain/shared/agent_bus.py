@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import threading
 import time
@@ -181,15 +182,23 @@ class AgentWorker:
             logger.info("Skipping request %s: the Orchestrator already timed out.", request.correlation_id)
             return None
 
-        status_code, body = self._call_query(request.query)
-        reply = KafkaAgentReply(correlation_id=request.correlation_id, agent=self.agent, status_code=status_code, body=body)
+        try:
+            status_code, body = self._call_query(request.query)
+            reply = KafkaAgentReply(correlation_id=request.correlation_id, agent=self.agent, status_code=status_code, body=body)
+            # Detect unserializable results before publishing so the caller receives
+            # a failure envelope instead of silently waiting for its deadline.
+            json.dumps(reply.model_dump(mode="json"), allow_nan=False)
+        except Exception as exc:  # noqa: BLE001 - agent failures must always become replies
+            logger.warning("%s failed request %s (%s).", self.agent, request.correlation_id, type(exc).__name__)
+            reply = KafkaAgentReply(correlation_id=request.correlation_id, agent=self.agent, status_code=500,
+                                   body={"detail": "Agent failed to produce a serializable response."})
         if self._producer is None:
             return reply  # not connected (only reachable when handle() is called directly)
         try:
             self._producer.send(request.reply_topic, reply)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - broker failures must not crash workers
             # The Orchestrator will report this agent as timed out.
-            logger.exception("Could not publish reply %s.", request.correlation_id)
+            logger.warning("Could not publish reply %s (%s).", request.correlation_id, type(exc).__name__)
         return reply
 
     def _call_query(self, query: AgentQuery) -> tuple[int, Any]:
@@ -258,7 +267,7 @@ class KafkaAgentBus:
         self._thread: threading.Thread | None = None
         self._producer: Producer | None = None
         self._lock = threading.Lock()
-        self._pending: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Future]] = {}
+        self._pending: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Future, str]] = {}
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name="orchestrator-kafka-replies", daemon=True)
@@ -266,6 +275,7 @@ class KafkaAgentBus:
 
     def stop(self) -> None:
         self._stop.set()
+        self._fail_pending()
         if self._thread is not None:
             self._thread.join(timeout=5)
 
@@ -284,6 +294,7 @@ class KafkaAgentBus:
             logger.exception("Orchestrator's Kafka reply consumer stopped unexpectedly.")
         finally:
             self._ready.clear()
+            self._fail_pending()
             _close(consumer)
             _close(self._producer)
 
@@ -294,11 +305,28 @@ class KafkaAgentBus:
             logger.warning("Dropping malformed reply on %s.", self.reply_topic)
             return
         with self._lock:
-            entry = self._pending.pop(reply.correlation_id, None)
+            entry = self._pending.get(reply.correlation_id)
+            if entry is not None and reply.agent != entry[2]:
+                logger.warning("Dropping mismatched agent reply for %s.", reply.correlation_id)
+                return
+            self._pending.pop(reply.correlation_id, None)
         if entry is None:
             return  # another replica's request, or one that already timed out
-        loop, future = entry
-        loop.call_soon_threadsafe(_resolve, future, reply)
+        loop, future, _ = entry
+        try:
+            loop.call_soon_threadsafe(_resolve, future, reply)
+        except RuntimeError:
+            logger.debug("Ignoring reply for a closed request event loop.")
+
+    def _fail_pending(self) -> None:
+        with self._lock:
+            pending = list(self._pending.values())
+            self._pending.clear()
+        for loop, future, _ in pending:
+            try:
+                loop.call_soon_threadsafe(_reject, future)
+            except RuntimeError:
+                logger.debug("Ignoring stopped request on a closed event loop.")
 
     async def request(self, agent: str, query: AgentQuery, timeout_s: float) -> KafkaAgentReply:
         """Send one request and wait for its reply.
@@ -307,6 +335,10 @@ class KafkaAgentBus:
         AgentBusUnavailable if Kafka can't take the request.
         """
         started = time.monotonic()
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ValueError("Agent timeout must be positive and finite.")
+        if self._stop.is_set():
+            raise AgentBusUnavailable("Kafka bus is stopped.")
         if not self._ready.is_set():
             # Startup: the reply consumer must be assigned before we publish, or
             # a fast reply could arrive before we're listening for it.
@@ -318,6 +350,8 @@ class KafkaAgentBus:
             raise AgentBusUnavailable("Not connected to Kafka.")
 
         remaining = timeout_s - (time.monotonic() - started)
+        if remaining <= 0:
+            raise TimeoutError("Agent deadline elapsed before publishing.")
         loop = asyncio.get_running_loop()
         future: asyncio.Future = loop.create_future()
         correlation_id = uuid.uuid4().hex
@@ -329,7 +363,9 @@ class KafkaAgentBus:
             deadline=time.time() + remaining,
         )
         with self._lock:
-            self._pending[correlation_id] = (loop, future)
+            if self._stop.is_set() or not self._ready.is_set():
+                raise AgentBusUnavailable("Kafka bus is unavailable.")
+            self._pending[correlation_id] = (loop, future, agent)
         try:
             try:
                 async with asyncio.timeout(max(remaining, 0)):
@@ -343,11 +379,22 @@ class KafkaAgentBus:
         finally:
             with self._lock:
                 self._pending.pop(correlation_id, None)
+            if not future.done():
+                future.cancel()
+            elif not future.cancelled():
+                # A concurrent shutdown may have failed the reply future while
+                # publishing failed first; retrieve it to avoid orphan warnings.
+                future.exception()
 
 
 def _resolve(future: asyncio.Future, reply: KafkaAgentReply) -> None:
     if not future.done():
         future.set_result(reply)
+
+
+def _reject(future: asyncio.Future) -> None:
+    if not future.done():
+        future.set_exception(AgentBusUnavailable("Kafka reply consumer is unavailable."))
 
 
 def reply_detail(body: Any) -> str:

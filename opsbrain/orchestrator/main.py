@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
 from functools import lru_cache
 
 from fastapi import FastAPI
@@ -18,12 +19,34 @@ from fastapi.responses import JSONResponse
 from orchestrator.graph import build_orchestrator_graph
 from orchestrator.llm import get_llm
 from orchestrator.memory import SessionMemory
+from shared.agent_bus import KafkaAgentBus, kafka_enabled
 from shared.models import AskRequest, AskResponse
 from shared.observability import WORKFLOW_DURATION, WORKFLOWS, instrument_app
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="OpsBrain Orchestrator", version="0.2.0")
+@lru_cache(maxsize=1)
+def get_bus() -> KafkaAgentBus | None:
+    if not kafka_enabled():
+        return None
+    bus = KafkaAgentBus()
+    bus.start()
+    return bus
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    bus = get_bus()
+    try:
+        yield
+    finally:
+        if bus is not None:
+            bus.stop()
+        get_graph.cache_clear()
+        get_bus.cache_clear()
+
+
+app = FastAPI(title="OpsBrain Orchestrator", version="0.2.0", lifespan=lifespan)
 instrument_app(app, "orchestrator")
 
 memory = SessionMemory()
@@ -31,7 +54,8 @@ memory = SessionMemory()
 
 @lru_cache(maxsize=1)
 def get_graph():
-    return build_orchestrator_graph(llm=get_llm("router"), synth_llm=get_llm("synth"))
+    options = {"bus": bus} if (bus := get_bus()) is not None else {}
+    return build_orchestrator_graph(llm=get_llm("router"), synth_llm=get_llm("synth"), **options)
 
 
 @app.get("/health")

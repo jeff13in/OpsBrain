@@ -6,6 +6,14 @@ How the Orchestrator and the four agents talk to each other. Models live in
 
 ## Request flow
 
+HTTP remains the default. With `AGENT_TRANSPORT=kafka`, `shared/agent_bus.py`
+publishes an `AgentQuery` envelope to `opsbrain.agent.<agent>.requests` and matches
+correlated replies from `opsbrain.agent.replies`. Each worker invokes the same
+`/query` ASGI handler, preserving validation and HTTP-equivalent status/body.
+Both transports retain execution metrics, agent retries and partial-answer rules.
+The reply listener must be ready before publishing; deadlines also bound sends.
+Transport selection does not change any chat model, embedding or provider retry.
+
 ```
 POST /ask  AskRequest{question, session_id?}
   → route       RoutingDecision{agents, method, reason} + standalone question
@@ -110,7 +118,9 @@ recently used are evicted). Failed (`error`) turns aren't remembered.
 
 ## Known gaps in the agents (to fix before OPU-44 / OPU-50)
 
-1. **Monitoring has no `/query` endpoint.** It needs one that returns `AgentReply` (Rifat's code).
+1. **Monitoring `/query` is integrated.** Alerts, pod health and scrape targets
+   return `AgentReply`-compatible answers over HTTP or opt-in Kafka. Backend
+   failures remain 503 rather than successful error prose.
 2. ~~**Infra and Code `ask()` return errors as 200s.**~~ Fixed in OPU-62. `/query` now returns
    503 when the backend is down, slow or throttled, 404/400 for things that don't exist or bad
    input, and 500 when credentials, permissions or config are missing. Backend calls are bounded

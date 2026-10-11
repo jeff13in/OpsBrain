@@ -29,7 +29,7 @@ async def validate(args):
         "timestamp": datetime.now(UTC).isoformat(),
         "mode": "live-provider-and-live-HTTP-services",
         "models": {role: os.getenv(f"LLM_MODEL_{role.upper()}", default) for role, default in DEFAULT_MODELS.items()},
-        "transport": "HTTP; Kafka is not connected in this checkout",
+        "transport": "Direct graph uses HTTP; deployed /ask uses its configured transport",
         "question_set": args.questions,
         "question_set_origin": "Reconstructed from repository runbooks and Linear OPU-51 scope; no original question set exists here",
         "checks": [],

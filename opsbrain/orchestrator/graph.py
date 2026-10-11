@@ -23,6 +23,7 @@ from langgraph.types import Send
 from orchestrator import llm as llm_ops
 from orchestrator.contract import (
     error_from_exception,
+    error_from_status,
     fallback_answer,
     merge_sources,
     overall_status,
@@ -30,6 +31,7 @@ from orchestrator.contract import (
     result_from_reply,
 )
 from orchestrator.router import AGENT_REGISTRY, route
+from shared.agent_bus import KafkaAgentBus, reply_detail
 from shared.models import (
     AgentName,
     AgentQuery,
@@ -69,6 +71,7 @@ async def call_agent(
     agent: AgentName,
     query: AgentQuery,
     transport: httpx.AsyncBaseTransport | None = None,
+    bus: KafkaAgentBus | None = None,
 ) -> AgentResult:
     """POST to one agent's /query and normalize the outcome. Never raises.
 
@@ -80,8 +83,23 @@ async def call_agent(
     async with httpx.AsyncClient(timeout=spec.timeout_s, transport=transport) as client:
         for attempt in (1, 2):
             try:
-                resp = await client.post(f"{spec.url}{spec.query_path}", json=query.model_dump())
-                resp.raise_for_status()
+                if bus is not None:
+                    reply = await bus.request(agent, query, spec.timeout_s)
+                    if not 200 <= reply.status_code < 300:
+                        error = error_from_status(reply.status_code, reply_detail(reply.body))
+                        if attempt == 1 and error.retryable and error.code != "timeout":
+                            continue
+                        result = result_from_error(agent, error, _elapsed_ms(started))
+                        _observe_agent_result(agent, result.status, started)
+                        return result
+                    body = reply.body
+                else:
+                    resp = await client.post(f"{spec.url}{spec.query_path}", json=query.model_dump())
+                    resp.raise_for_status()
+                    try:
+                        body = resp.json()
+                    except ValueError:
+                        body = None
             except Exception as exc:  # noqa: BLE001 - every failure becomes an AgentResult
                 error = error_from_exception(exc)
                 if attempt == 1 and error.retryable and error.code != "timeout":
@@ -89,10 +107,6 @@ async def call_agent(
                 result = result_from_error(agent, error, _elapsed_ms(started))
                 _observe_agent_result(agent, result.status, started)
                 return result
-            try:
-                body = resp.json()
-            except ValueError:
-                body = None  # 2xx with a non-JSON body → invalid_response
             result = result_from_reply(agent, body, _elapsed_ms(started))
             _observe_agent_result(agent, result.status, started)
             return result
@@ -116,6 +130,7 @@ def build_orchestrator_graph(
     transport: httpx.AsyncBaseTransport | None = None,
     *,
     synth_llm: Any = _USE_ROUTER_MODEL,
+    bus: KafkaAgentBus | None = None,
 ):
     """Compile the graph with independently injectable router/synthesis models.
 
@@ -141,7 +156,7 @@ def build_orchestrator_graph(
 
     async def call_agent_node(call: AgentCall) -> OrchestratorState:
         query = AgentQuery(question=call["question"], request_id=call["request_id"])
-        return {"results": [await call_agent(call["agent"], query, transport)]}
+        return {"results": [await call_agent(call["agent"], query, transport, bus)]}
 
     async def synthesise_node(state: OrchestratorState) -> OrchestratorState:
         # Branches finish in any order; report results in routing order.

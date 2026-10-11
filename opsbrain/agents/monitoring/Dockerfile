@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir fastapi uvicorn pydantic prometheus-client
+RUN pip install --no-cache-dir fastapi uvicorn pydantic prometheus-client httpx kafka-python
 
 COPY shared/ ./shared/
 COPY agents/monitoring/*.py ./monitoring/

@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install --no-cache-dir fastapi uvicorn pydantic httpx prometheus-client "langgraph>=0.2,<1.0" "langchain-core>=0.3,<1.0" "langchain-openai>=0.3,<0.4"
+RUN pip install --no-cache-dir fastapi uvicorn pydantic httpx prometheus-client kafka-python "langgraph>=0.2,<1.0" "langchain-core>=0.3,<1.0" "langchain-openai>=0.3,<0.4"
 COPY shared/         ./shared/
 COPY orchestrator/   ./orchestrator/
 ENV PYTHONPATH=/app

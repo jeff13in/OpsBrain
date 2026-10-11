@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from monitoring.agent import MonitoringAgent, MonitoringClientError
+from shared.agent_bus import attach_kafka_worker
 from shared.observability import instrument_app
 
 app = FastAPI(
@@ -21,11 +22,16 @@ app = FastAPI(
     ),
 )
 instrument_app(app, "monitoring-agent")
+attach_kafka_worker(app, "monitoring")
 
 
 class HealthResponse(BaseModel):
     status: str
     services: dict[str, str]
+
+
+class QueryRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
 
 
 class PrometheusQueryRequest(BaseModel):
@@ -73,6 +79,16 @@ def get_agent() -> MonitoringAgent:
 def health() -> HealthResponse:
     response = get_agent().health()
     return HealthResponse(**response)
+
+
+@app.post("/query")
+def query(request: QueryRequest) -> dict[str, Any]:
+    try:
+        return get_agent().ask(request.question)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MonitoringClientError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/metrics/query")

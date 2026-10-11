@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 from pydantic import ValidationError
 
+from shared.agent_bus import AgentBusUnavailable
 from shared.models import (
     AgentError,
     AgentName,
@@ -50,8 +51,10 @@ def result_from_reply(agent: AgentName, body: Any, latency_ms: int = 0) -> Agent
 
 def error_from_exception(exc: Exception) -> AgentError:
     """Map an httpx failure onto the contract's error codes."""
-    if isinstance(exc, httpx.TimeoutException):
+    if isinstance(exc, (httpx.TimeoutException, TimeoutError)):
         return AgentError(code="timeout", message="Agent did not respond before the deadline.", retryable=True)
+    if isinstance(exc, AgentBusUnavailable):
+        return AgentError(code="unavailable", message="Kafka transport is unavailable.", retryable=True)
     if isinstance(exc, httpx.HTTPStatusError):
         return error_from_status(exc.response.status_code, exc.response.text)
     if isinstance(exc, httpx.TransportError):

@@ -131,11 +131,44 @@ python -m scripts.validate_rag --directory docs --api-directory /app/data --ques
 credentials and no live checks executed. Its reconstructed question set covers
 both runbooks and all agent types. No original OPU-51 question set exists in this
 checkout or the issue's comments. The async implementation here uses HTTP;
-Kafka integration and the Monitoring Agent's missing `/query` remain prior
-integration gaps. See [validation/OPU-80.md](validation/OPU-80.md) for executed
+Kafka is now available through the opt-in override and Monitoring has `/query`;
+the Infra/Code agents still need backend configuration. See [validation/OPU-80.md](validation/OPU-80.md) for executed
 checks and remaining acceptance requirements.
 
-### Prerequisites
+### Integrated agent transports (OPU-50 follow-up)
+
+Monitoring now implements `/query` for alerts, pod health and scrape targets,
+using its existing Prometheus/Alertmanager backends. Groq routing/answer/synthesis,
+Gemini embeddings and all observability endpoints remain unchanged.
+
+HTTP remains the default (`AGENT_TRANSPORT=http`). To opt into Kafka request/reply
+for every agent, apply the transport override; it starts/waits for the broker:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.kafka.yml --profile full up --build -d orchestrator rag-agent monitoring-agent infra-agent code-agent
+```
+
+Kafka workers call the same validated `/query` handlers; correlation IDs,
+deadlines, partial failures and citations use the existing response contract.
+Kafka is a transport only: provider-level retries remain disabled and router/
+synthesis models and deadlines do not change. Broker outages are reported as
+unavailable, not silently hidden by HTTP fallback. This local broker is unsecured;
+keep it private and add authentication/TLS before any external deployment.
+
+To return to HTTP, ensure `.env` has `AGENT_TRANSPORT=http` (or leave it unset),
+and recreate the agents without the override:
+
+```powershell
+docker compose --profile full up -d orchestrator rag-agent monitoring-agent infra-agent code-agent
+```
+
+The Code Agent still needs `GITHUB_REPO=owner/repo` (and a local `GITHUB_TOKEN`
+for private access). Kubernetes still needs a real cluster; for containers use
+the optional `docker-compose.kubernetes.yml` override with `KUBECONFIG_HOST`
+pointing to a self-contained kubeconfig. Its API server must be reachable from
+Docker; a host `localhost` address usually is not. Do not put credentials in Git.
+
+### General prerequisites
 
 - **Docker Desktop** running, with Compose v2 (`docker compose`, not the old
   `docker-compose`).
@@ -1027,25 +1060,15 @@ Invoke-RestMethod -Uri http://localhost:8004/query -Method Post -ContentType "ap
 
 Verified directly against `orchestrator/graph.py` and `orchestrator/router.py`:
 
-- Monitoring exposes specialized endpoints but no contract-compatible `/query`;
-  routed monitoring requests therefore fail rather than returning a synthesized
-  metrics answer. The graph reports this agent as unavailable.
+- Infra and Code need real backend configuration: a reachable Kubernetes cluster
+  and a selected GitHub repository. These cannot be inferred from the migration.
 - Conversation history is in-process; multiple orchestrator replicas need
   sticky sessions or a shared memory store.
-- **Kafka fan-out**: `shared/kafka_client.py` is **no longer a print-only
-  stub** — `KafkaProducer`/`KafkaConsumer` now wrap real `kafka-python`
-  calls (`send()` blocks until the broker acknowledges;
-  `serialize_message`/`deserialize_message` handle either a Pydantic
-  `AgentMessage` or a plain dict). Verified working end-to-end against the
-  real `kafka` container in this Compose file. **What's still true, though:
-  nothing imports `shared/kafka_client.py` from `agents/` or
-  `orchestrator/` yet** — the utility exists and works, but no agent
-  actually publishes or consumes a message through it. The `kafka`
-  container runs in Compose, and you *can* talk to it using this client,
-  but no running service does so automatically today.
+- Kafka is now integrated as an opt-in transport; production authentication/TLS
+  and operational hardening are separate from this local Compose setup.
 
-Multi-agent routing and synthesis run over asynchronous HTTP. Kafka integration
-and the monitoring query adapter remain gaps; see OPU-80 validation evidence.
+Multi-agent routing and synthesis support HTTP and opt-in Kafka. Monitoring
+implements `/query`; see `validation/agent-integration.md` for current evidence.
 
 ---
 
@@ -1270,10 +1293,10 @@ User (CLI / Slack — not built yet)
 | Agent | What's actually implemented | What's not |
 |-------|-----------------------------|------------|
 | **RAG** | Full ingest → embed (Gemini) → store (pgvector) → retrieve → answer pipeline, with citation validation | Chunking/top-k tuning env vars from `.env.example` don't match the real ones (§2) |
-| **Monitoring** | Real Prometheus/Grafana/Alertmanager integration, verified UIDs, alert summaries, pod health from a fake demo exporter | No real Kubernetes cluster behind `/pods/health`; agents don't expose `/metrics` themselves yet |
+| **Monitoring** | Prometheus/Grafana/Alertmanager integration, `/query`, alert summaries, demo pod health, `/metrics` | No real Kubernetes cluster behind the demo pod metrics |
 | **Infra** | Real AWS (boto3: EC2/EKS/RDS), real Kubernetes client (pods/nodes/deployments/resource usage), real Terraform-state-reading logic, an aggregate health-summary endpoint, graceful degradation everywhere, moto-based test coverage for the AWS calls | Kubeconfig isn't actually mountable as shipped; Terraform CLI isn't installed; `/terraform/plan` never generates a plan, only displays one; K8s-side methods have no unit tests, only manual verification |
 | **Code** | Real GitHub REST API integration — PRs, commits, deployments, check-run status, Actions runs, and two real mutating actions (rerun a run, dispatch a workflow) | Check-runs only (not the older combined-status API); no test coverage at all; `workflow_dispatch` triggering only works against workflows that declare that trigger (this repo's own CI doesn't) |
-| **Orchestrator** | `/health`, `/ask`, Groq routing, concurrent HTTP fan-out, synthesis, keyword/labeled fallbacks, bounded session history | Monitoring has no `/query`; Kafka client is not wired into the pipeline; memory is per replica |
+| **Orchestrator** | `/health`, `/ask`, Groq routing, concurrent HTTP/Kafka fan-out, synthesis, keyword/labeled fallbacks, bounded session history | Infrastructure/GitHub backend setup remains required; memory is per replica |
 
 ### Project structure
 
@@ -1285,11 +1308,11 @@ opsbrain/
 │   ├── infra/         ← implemented, with the real limitations in §4
 │   └── code/          ← implemented, with the real limitations in §5
 ├── orchestrator/      ← /health + asynchronous multi-agent /ask
-├── shared/             ← models.py/config.py/kafka_client.py — kafka_client.py is now a real, tested Kafka producer/consumer; still not imported by any agent
+├── shared/             ← shared chat factory, models, observability and integrated Kafka request/reply
 ├── infra/terraform/  ← Terraform IaC definitions (not yet applied to any real AWS account)
 ├── infra/prometheus/, infra/grafana/, infra/alertmanager/ ← real local monitoring stack config
 ├── k8s/                ← Kubernetes manifests referencing ECR image paths (not GHCR — not yet updated for the current image registry)
-├── tests/              ← RAG + Monitoring + Infra (AWS only, via moto) + Kafka client (serialization only) coverage — see §8 for exact gaps
+├── tests/              ← RAG, Monitoring, Infra, observability, chat migration and Kafka request/reply tests
 ├── scripts/validate_rag.py ← manual live-integration script (see §2)
 ├── .github/            ← does not exist under opsbrain/ — the real CI workflow lives at the repo root
 ├── docker-compose.yml
@@ -1305,10 +1328,10 @@ opsbrain/
 - [x] Code Agent — real GitHub PR/commits/deployments/Actions integration, plus two real mutating actions (rerun a run, dispatch a workflow)
 - [x] Kafka producer/consumer — real `kafka-python`-backed client in `shared/kafka_client.py`, verified against a live broker
 - [x] CI pipeline — lint, test, build, and publish images to GHCR (see the repo-root `.github/workflows/ci-cd.yml`); the `deploy` stage's working-directory bug is fixed, though it still can't succeed end-to-end until the next item below is done
-- [x] Orchestrator HTTP multi-agent routing and answer synthesis (live Groq verification pending; see `validation/OPU-80.md`)
-- [ ] Wiring any agent to actually publish/consume through `shared/kafka_client.py` — the client itself works, nothing calls it yet
+- [x] Orchestrator HTTP/Kafka routing and synthesis (live RAG+Monitoring verified; full backend setup still required)
+- [x] Opt-in Kafka workers and orchestrator request/reply integration
 - [x] `/metrics` endpoints, Grafana dashboards, Loki logging, and alert rules (OPU-56)
-- [ ] Kubeconfig mounting for the Infra Agent (§4, Limitation 2)
+- [x] Optional kubeconfig mounting via `docker-compose.kubernetes.yml` (real cluster still required)
 - [ ] Terraform CLI installed in the Infra Agent's image (§4, Limitation 3)
 - [ ] Automated test coverage for the Code Agent, and for the Infra Agent's Kubernetes-side methods (AWS-side is covered via `moto`)
 - [ ] Real AWS EKS deployment via Terraform + ArgoCD — Terraform definitions exist under `infra/terraform/` but have not been applied to any real account, and the CI `deploy` stage's `ARGOCD_SERVER`/`ARGOCD_TOKEN` secrets can't be filled in with real values until an EKS cluster + ArgoCD install actually exist

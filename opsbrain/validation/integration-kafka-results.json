@@ -1,0 +1,165 @@
+{
+  "timestamp": "2026-10-11T02:59:23.088456+00:00",
+  "mode": "live-services-and-providers",
+  "transport": "kafka",
+  "note": "Transport selected externally in Compose; no simulated backend summaries.",
+  "checks": [
+    {
+      "name": "metrics",
+      "port": 8000,
+      "status": "passed"
+    },
+    {
+      "name": "metrics",
+      "port": 8001,
+      "status": "passed"
+    },
+    {
+      "name": "metrics",
+      "port": 8002,
+      "status": "passed"
+    },
+    {
+      "name": "metrics",
+      "port": 8003,
+      "status": "passed"
+    },
+    {
+      "name": "metrics",
+      "port": 8004,
+      "status": "passed"
+    },
+    {
+      "name": "ask",
+      "question": "Are any alerts firing?",
+      "expected_agents": [
+        "monitoring"
+      ],
+      "status": "passed",
+      "seconds": 1.719,
+      "response": {
+        "request_id": "d2fe9df4c40f4e85af30da802a726e0d",
+        "session_id": null,
+        "question": "Are any alerts firing?",
+        "status": "ok",
+        "answer": "1 active and 0 suppressed alert(s) out of 1 (1 warning). Most frequent: DemoPodRestarting (1).",
+        "sources": [
+          "alertmanager:alerts"
+        ],
+        "routing": {
+          "agents": [
+            "monitoring"
+          ],
+          "method": "llm",
+          "reason": "Monitoring question about alerts"
+        },
+        "results": [
+          {
+            "agent": "monitoring",
+            "status": "ok",
+            "answer": "1 active and 0 suppressed alert(s) out of 1 (1 warning). Most frequent: DemoPodRestarting (1).",
+            "sources": [
+              "alertmanager:alerts"
+            ],
+            "data": {
+              "total": 1,
+              "active": 1,
+              "suppressed": 0,
+              "severity_breakdown": {
+                "warning": 1
+              },
+              "state_breakdown": {
+                "active": 1
+              },
+              "top_alerts": [
+                {
+                  "alertname": "DemoPodRestarting",
+                  "count": 1
+                }
+              ]
+            },
+            "error": null,
+            "latency_ms": 163
+          }
+        ]
+      }
+    },
+    {
+      "name": "ask",
+      "question": "Check firing alerts and explain the documented troubleshooting procedure.",
+      "expected_agents": [
+        "rag",
+        "monitoring"
+      ],
+      "status": "passed",
+      "seconds": 5.203,
+      "response": {
+        "request_id": "b410c6490cf240619a1da89d4c131664",
+        "session_id": null,
+        "question": "Check firing alerts and explain the documented troubleshooting procedure.",
+        "status": "ok",
+        "answer": "**Current Alert Status**\nThere is currently **1 active alert** (warning level) and 0 suppressed alerts. The firing alert is **`DemoPodRestarting`**\u3010alertmanager:alerts\u3011.\n\n**Checking Firing Alerts**\nTo verify alerts in the system:\n1.  Open the Prometheus UI (e.g., `http://<prometheus-svc>:9090/alerts`) and check the **Alerts** page.\n2.  Any alert in the **Firing** state indicates a problem that has persisted beyond its evaluation window (typically >5 minutes)\u3010runbook-high-cpu.md\u3011.\n3.  Verify target health in **Status > Targets**; if a scrape is failing, inspect the target\u2019s last error and the `/metrics` endpoint\u3010observability.md\u3011.\n\n**Documented Troubleshooting Procedure**\nThe following procedure is documented for high-CPU scenarios (e.g., `HighCPUUsage`)\u3010runbook-high-cpu.md\u3011:\n\n1.  **Identify the hot pod**: Run `kubectl top pods -n opsbrain --sort-by=cpu` and `kubectl top nodes` to locate the resource consumer\u3010runbook-high-cpu.md\u3011.\n2.  **Inspect recent logs**: Use `kubectl logs -n opsbrain <pod-name> --tail=200 | grep -i \"error\\|timeout\\|slow\"` to find error patterns\u3010runbook-high-cpu.md\u3011.\n3.  **Check recent deployments**: Run `kubectl rollout history deployment/<agent-name> -n opsbrain` to see if a new image caused the issue\u3010runbook-high-cpu.md\u3011.\n4.  **Verify the exact metric**: In Prometheus, query `rate(process_cpu_seconds_total{namespace=\"opsbrain\"}[5m]) * 100` to confirm the usage value\u3010runbook-high-cpu.md\u3011.\n5.  **Check for slow DB queries** (RAG agents only): Query `pg_stat_statements` in RDS to identify heavy queries driving CPU\u3010runbook-high-cpu.md\u3011.\n6.  **Apply immediate mitigation**: Choose one of the following:\n    *   Scale out: `kubectl scale deployment <agent-name> -n opsbrain --replicas=5`\n    *   Rollback: `kubectl rollout undo deployment/<agent-name> -n opsbrain`\n    *   Add node capacity via Terraform\u3010runbook-high-cpu.md\u3011.\n7.  **Post-incident analysis**: Diff image tags, review traffic patterns, and verify indexes to prevent recurrence\u3010runbook-high-cpu.md\u3011.\n\n*Note: The current firing alert is `DemoPodRestarting`, while the detailed troubleshooting steps above are specifically documented for high-CPU alerts. Please verify if a specific runbook exists for pod restarts or apply general pod troubleshooting if the CPU runbook does not apply.*\n\nSources: [alertmanager:alerts], [runbook-high-cpu.md], [observability.md]",
+        "sources": [
+          "runbook-high-cpu.md",
+          "observability.md",
+          "alertmanager:alerts"
+        ],
+        "routing": {
+          "agents": [
+            "rag",
+            "monitoring"
+          ],
+          "method": "llm",
+          "reason": "User wants current firing alerts (monitoring) and the runbook/troubleshooting steps (rag)."
+        },
+        "results": [
+          {
+            "agent": "rag",
+            "status": "ok",
+            "answer": "**Checking firing alerts**\n\n1. Open the Prometheus UI (e.g., `http://<prometheus\u2011svc>:9090/alerts`) and look at the **Alerts** page.  \n   - Any alert shown in **Firing** (e.g., `HighCPUUsage`) indicates a problem that has persisted beyond its evaluation window (usually\u202f>\u202f5\u202fmin)\u3010runbook-high-cpu.md\u3011.  \n2. Verify that the target is healthy in **Status\u202f>\u202fTargets**; if a scrape is failing, inspect the target\u2019s last error and the `/metrics` endpoint from inside the cluster\u3010observability.md\u3011.  \n\n**Documented troubleshooting procedure (High\u2011CPU runbook)**  \n\n| Step | Action | Why |\n|------|--------|-----|\n| **1. Identify the hot pod** | `kubectl top pods -n opsbrain --sort-by=cpu` (and `kubectl top nodes`) | Shows which pod or node is consuming the most CPU\u3010runbook-high-cpu.md\u3011. |\n| **2. Inspect recent logs** | `kubectl logs -n opsbrain <pod\u2011name> --tail=200 | grep -i \"error\\|timeout\\|slow\"` | Looks for error patterns that may explain the spike\u3010runbook-high-cpu.md\u3011. |\n| **3. Check recent deployments** | `kubectl rollout history deployment/<agent\u2011name> -n opsbrain` | Determines whether a new image/tag introduced the issue\u3010runbook-high-cpu.md\u3011. |\n| **4. Verify the exact metric** | In Prometheus run: `rate(process_cpu_seconds_total{namespace=\"opsbrain\"}[5m]) * 100` | Confirms the CPU usage value that triggered the alert\u3010runbook-high-cpu.md\u3011. |\n| **5. Look for slow DB queries (RAG agents only)** | Connect to the RDS instance and run: <br>`SELECT query, calls, mean_exec_time, total_exec_time FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 10;` | A heavy query can drive CPU on the RAG ingest/agent pod\u3010runbook-high-cpu.md\u3011. |\n| **6. Immediate mitigation (choose one)** | \u2022 **Scale out**: `kubectl scale deployment <agent\u2011name> -n opsbrain --replicas=5` <br>\u2022 **Rollback**: `kubectl rollout undo deployment/<agent\u2011name> -n opsbrain` <br>\u2022 **Add node capacity**: edit `eks_desired_nodes` in Terraform and `terraform apply` | Provides rapid relief while root\u2011cause analysis continues\u3010runbook-high-cpu.md\u3011. |\n| **7. Post\u2011incident root\u2011cause analysis** | Diff last two image tags, review traffic patterns in Grafana, examine batch sizes, verify pgvector indexes, etc. | Ensures the underlying issue is fixed and prevented in future\u3010runbook-high-cpu.md\u3011. |\n\n**Summary**  \n- Start by confirming which alerts are firing in Prometheus.  \n- Follow the step\u2011by\u2011step diagnosis above: locate the hot pod, check its logs, verify recent deployments, query the exact CPU metric, and, if applicable, investigate slow database queries.  \n- Apply an immediate mitigation (scale, rollback, or add capacity) and then perform the detailed root\u2011cause analysis to prevent recurrence.\n\nSources: [observability.md], [runbook-high-cpu.md]",
+            "sources": [
+              "runbook-high-cpu.md",
+              "observability.md",
+              "observability.md",
+              "runbook-high-cpu.md"
+            ],
+            "data": {
+              "grounded": true,
+              "validation_errors": [],
+              "retrieved_chunks": 4
+            },
+            "error": null,
+            "latency_ms": 3351
+          },
+          {
+            "agent": "monitoring",
+            "status": "ok",
+            "answer": "1 active and 0 suppressed alert(s) out of 1 (1 warning). Most frequent: DemoPodRestarting (1).",
+            "sources": [
+              "alertmanager:alerts"
+            ],
+            "data": {
+              "total": 1,
+              "active": 1,
+              "suppressed": 0,
+              "severity_breakdown": {
+                "warning": 1
+              },
+              "state_breakdown": {
+                "active": 1
+              },
+              "top_alerts": [
+                {
+                  "alertname": "DemoPodRestarting",
+                  "count": 1
+                }
+              ]
+            },
+            "error": null,
+            "latency_ms": 28
+          }
+        ]
+      }
+    }
+  ]
+}

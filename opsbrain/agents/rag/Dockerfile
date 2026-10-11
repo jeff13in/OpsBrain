@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN pip install --no-cache-dir \
-    fastapi uvicorn pydantic prometheus-client \
+    fastapi uvicorn pydantic prometheus-client httpx kafka-python \
     "langchain-core>=0.3,<1.0" \
     "langchain-openai>=0.3,<0.4" \
     "langchain-google-genai>=2.0,<4.0" \

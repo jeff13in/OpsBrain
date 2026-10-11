@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from agents.infra.agent import InfraAgent, InfraClientError
+from shared.agent_bus import attach_kafka_worker
 from shared.observability import instrument_app
 
 app = FastAPI(
@@ -17,6 +18,7 @@ app = FastAPI(
     description="Check AWS resource state, Kubernetes pod/node health, and Terraform plan status.",
 )
 instrument_app(app, "infra-agent")
+attach_kafka_worker(app, "infra")
 
 
 class HealthResponse(BaseModel):

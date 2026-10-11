@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from rag.agent import AgentResponse, RAGAgent
 from rag.ingestor import IngestionResult, PgVectorIngestor
+from shared.agent_bus import attach_kafka_worker
 from shared.observability import instrument_app
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ app = FastAPI(
     description="Retrieve runbook context from pgvector and answer DevOps questions.",
 )
 instrument_app(app, "rag-agent")
+attach_kafka_worker(app, "rag")
 
 
 class QueryRequest(BaseModel):

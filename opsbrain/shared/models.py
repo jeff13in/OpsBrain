@@ -132,3 +132,20 @@ class AskResponse(BaseModel):
     sources: list[str]
     routing: RoutingDecision
     results: list[AgentResult]
+
+
+class KafkaAgentRequest(BaseModel):
+    """AgentQuery envelope with reply correlation and an absolute deadline."""
+    correlation_id: str
+    agent: AgentName
+    query: AgentQuery
+    reply_topic: str
+    deadline: float
+
+
+class KafkaAgentReply(BaseModel):
+    """The agent's HTTP-equivalent status/body transported over Kafka."""
+    correlation_id: str
+    agent: AgentName
+    status_code: int
+    body: Any = None

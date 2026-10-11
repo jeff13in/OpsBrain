@@ -1,0 +1,20 @@
+# Opt-in transport; does not alter Groq settings or the default HTTP stack.
+# docker compose -f docker-compose.yml -f docker-compose.kafka.yml --profile full up --build -d
+x-kafka: &kafka
+  environment:
+    AGENT_TRANSPORT: kafka
+  depends_on:
+    kafka:
+      condition: service_healthy
+
+services:
+  orchestrator:
+    <<: *kafka
+  rag-agent:
+    <<: *kafka
+  monitoring-agent:
+    <<: *kafka
+  infra-agent:
+    <<: *kafka
+  code-agent:
+    <<: *kafka

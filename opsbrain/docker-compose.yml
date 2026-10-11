@@ -7,6 +7,10 @@
 #   1. cp .env.example .env  →  fill in required values
 #   2. docker compose --profile full up
 
+x-agent-transport: &agent-transport
+  AGENT_TRANSPORT: ${AGENT_TRANSPORT:-http}
+  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+
 services:
 
   # ── PostgreSQL + pgvector ───────────────────────────────────────────────────
@@ -38,6 +42,7 @@ services:
       - "8001:8001"
     environment:
       GOOGLE_API_KEY:         ${GOOGLE_API_KEY}
+      <<: *agent-transport
       GOOGLE_EMBEDDING_MODEL: models/gemini-embedding-001
       LLM_BASE_URL:           ${LLM_BASE_URL:-https://api.groq.com/openai/v1}
       LLM_API_KEY:            ${LLM_API_KEY:-}
@@ -60,6 +65,7 @@ services:
       - "8000:8000"
     environment:
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.groq.com/openai/v1}
+      <<: *agent-transport
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL_ROUTER: ${LLM_MODEL_ROUTER:-openai/gpt-oss-20b}
       LLM_MODEL_SYNTH: ${LLM_MODEL_SYNTH:-qwen/qwen3.8-27b}
@@ -75,6 +81,7 @@ services:
       - "8002:8002"
     environment:
       PROMETHEUS_BASE_URL:                 http://prometheus:9090
+      <<: *agent-transport
       GRAFANA_BASE_URL:                    http://grafana:3000
       GRAFANA_API_TOKEN:                   ${GRAFANA_API_TOKEN}
       ALERTMANAGER_BASE_URL:               http://alertmanager:9093
@@ -121,6 +128,7 @@ services:
       - "8003:8003"
     environment:
       AWS_REGION:            ${AWS_REGION:-us-east-1}
+      <<: *agent-transport
       AWS_ACCESS_KEY_ID:     ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       KUBECONFIG:            ${KUBECONFIG:-}
@@ -139,6 +147,7 @@ services:
       - "8004:8004"
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      <<: *agent-transport
       GITHUB_REPO:  ${GITHUB_REPO:-}
     profiles: [full]
 
@@ -223,6 +232,12 @@ services:
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES:      CONTROLLER
     volumes:
       - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
     profiles: [full]
 
 volumes:

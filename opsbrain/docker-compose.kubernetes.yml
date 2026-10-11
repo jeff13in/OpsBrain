@@ -1,0 +1,11 @@
+# Opt-in host kubeconfig mount. Prefer a self-contained (flattened) kubeconfig.
+# Set KUBECONFIG_HOST to its absolute host path; API server reachable from Docker.
+services:
+  infra-agent:
+    environment:
+      KUBECONFIG: /app/kubeconfig/config
+    volumes:
+      - type: bind
+        source: ${KUBECONFIG_HOST:?Set KUBECONFIG_HOST to an existing host kubeconfig}
+        target: /app/kubeconfig/config
+        read_only: true

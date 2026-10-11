@@ -35,6 +35,8 @@ spec:
               value: "0@kafka-0.kafka-headless:9093"
             - name: KAFKA_CFG_CONTROLLER_LISTENER_NAMES
               value: "CONTROLLER"
+            - name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
+              value: "true"
           volumeMounts:
             - name: kafka-data
               mountPath: /bitnami/kafka

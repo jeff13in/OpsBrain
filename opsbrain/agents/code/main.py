@@ -9,12 +9,16 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from agents.code.agent import CodeAgent, CodeClientError
+from shared.agent_bus import attach_kafka_worker
 
 app = FastAPI(
     title="OpsBrain Code Agent",
     version="0.1.0",
     description="Query GitHub pull requests and GitHub Actions CI/CD pipeline status.",
 )
+
+# Also answer the Orchestrator's requests over Kafka when AGENT_TRANSPORT=kafka (OPU-50).
+attach_kafka_worker(app, "code")
 
 
 class HealthResponse(BaseModel):

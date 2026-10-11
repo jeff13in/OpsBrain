@@ -23,13 +23,15 @@ from langgraph.types import Send
 from orchestrator import llm as llm_ops
 from orchestrator.contract import (
     error_from_exception,
+    error_from_status,
     fallback_answer,
     merge_sources,
     overall_status,
     result_from_error,
     result_from_reply,
 )
-from orchestrator.router import AGENT_REGISTRY, route
+from orchestrator.router import AGENT_REGISTRY, AgentSpec, route
+from shared.agent_bus import KafkaAgentBus, reply_detail
 from shared.models import (
     AgentName,
     AgentQuery,
@@ -68,9 +70,12 @@ async def call_agent(
     agent: AgentName,
     query: AgentQuery,
     transport: httpx.AsyncBaseTransport | None = None,
+    bus: KafkaAgentBus | None = None,
 ) -> AgentResult:
-    """POST to one agent's /query and normalize the outcome. Never raises.
+    """Send the query to one agent — over Kafka when `bus` is set, else HTTP — and
+    normalize the outcome. Never raises.
 
+    Both transports end in (status code, body), so the contract rules are identical.
     Retryable non-timeout failures (agent unreachable / 503) get one retry;
     a timeout already consumed the agent's whole budget, so it isn't retried.
     """
@@ -79,27 +84,48 @@ async def call_agent(
     async with httpx.AsyncClient(timeout=spec.timeout_s, transport=transport) as client:
         for attempt in (1, 2):
             try:
-                resp = await client.post(f"{spec.url}{spec.query_path}", json=query.model_dump())
-                resp.raise_for_status()
+                if bus is not None:
+                    status_code, body, detail = await _send_kafka(bus, agent, spec, query)
+                else:
+                    status_code, body, detail = await _send_http(client, spec, query)
             except Exception as exc:  # noqa: BLE001 - every failure becomes an AgentResult
                 error = error_from_exception(exc)
-                if attempt == 1 and error.retryable and error.code != "timeout":
-                    continue
-                return result_from_error(agent, error, _elapsed_ms(started))
-            try:
-                body = resp.json()
-            except ValueError:
-                body = None  # 2xx with a non-JSON body → invalid_response
-            return result_from_reply(agent, body, _elapsed_ms(started))
+            else:
+                if 200 <= status_code < 300:
+                    return result_from_reply(agent, body, _elapsed_ms(started))
+                error = error_from_status(status_code, detail)
+            if attempt == 1 and error.retryable and error.code != "timeout":
+                continue
+            return result_from_error(agent, error, _elapsed_ms(started))
     raise AssertionError("unreachable")  # pragma: no cover
+
+
+async def _send_http(client: httpx.AsyncClient, spec: AgentSpec, query: AgentQuery) -> tuple[int, Any, str]:
+    resp = await client.post(f"{spec.url}{spec.query_path}", json=query.model_dump())
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None  # 2xx with a non-JSON body → invalid_response
+    return resp.status_code, body, resp.text
+
+
+async def _send_kafka(bus: KafkaAgentBus, agent: AgentName, spec: AgentSpec, query: AgentQuery) -> tuple[int, Any, str]:
+    reply = await bus.request(agent, query, spec.timeout_s)
+    body = reply.body if isinstance(reply.body, dict | list) else None
+    return reply.status_code, body, reply_detail(reply.body)
 
 
 def _elapsed_ms(started: float) -> int:
     return int((time.monotonic() - started) * 1000)
 
 
-def build_orchestrator_graph(llm: Any | None = None, transport: httpx.AsyncBaseTransport | None = None):
-    """Compile the graph. `llm` and `transport` are injectable for tests."""
+def build_orchestrator_graph(
+    llm: Any | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    bus: KafkaAgentBus | None = None,
+):
+    """Compile the graph. Agents are called over Kafka when `bus` is set, else HTTP.
+    `llm` and `transport` are injectable for tests."""
 
     async def route_node(state: OrchestratorState) -> OrchestratorState:
         question = state["question"]
@@ -118,7 +144,7 @@ def build_orchestrator_graph(llm: Any | None = None, transport: httpx.AsyncBaseT
 
     async def call_agent_node(call: AgentCall) -> OrchestratorState:
         query = AgentQuery(question=call["question"], request_id=call["request_id"])
-        return {"results": [await call_agent(call["agent"], query, transport)]}
+        return {"results": [await call_agent(call["agent"], query, transport, bus)]}
 
     async def synthesise_node(state: OrchestratorState) -> OrchestratorState:
         # Branches finish in any order; report results in routing order.

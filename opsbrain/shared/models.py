@@ -49,6 +49,32 @@ class AgentMessage(BaseModel):
     payload: dict[str, Any]
 
 
+class KafkaAgentRequest(BaseModel):
+    """Orchestrator → agent, on topic `opsbrain.agent.<agent>.requests` (OPU-50).
+
+    Carries the same AgentQuery the HTTP path POSTs, plus what the agent needs
+    to answer asynchronously: where to reply and when the Orchestrator stops waiting.
+    """
+    correlation_id: str
+    agent: str
+    query: "AgentQuery"
+    reply_topic: str
+    deadline: float
+    """Unix time after which the Orchestrator has given up; agents skip expired requests."""
+
+
+class KafkaAgentReply(BaseModel):
+    """Agent → Orchestrator, on the request's `reply_topic` (OPU-50).
+
+    The agent's /query outcome as-is, so the Orchestrator applies the exact same
+    contract rules as for HTTP: 2xx body → AgentReply, anything else → error code.
+    """
+    correlation_id: str
+    agent: str
+    status_code: int
+    body: Any = None
+
+
 # ── Orchestrator contract (OPU-42) ────────────────────────────────────────────
 # The shapes every agent and the Orchestrator agree on. See
 # orchestrator/CONTRACT.md for the routing and aggregation rules around them.
@@ -132,3 +158,7 @@ class AskResponse(BaseModel):
     sources: list[str]
     routing: RoutingDecision
     results: list[AgentResult]
+
+
+# KafkaAgentRequest references AgentQuery, which is defined further down.
+KafkaAgentRequest.model_rebuild()

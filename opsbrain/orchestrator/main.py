@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from functools import lru_cache
 
 from fastapi import FastAPI
@@ -17,11 +18,31 @@ from fastapi.responses import JSONResponse
 from orchestrator.graph import build_orchestrator_graph
 from orchestrator.llm import get_llm
 from orchestrator.memory import SessionMemory
+from shared.agent_bus import KafkaAgentBus, kafka_enabled
 from shared.models import AskRequest, AskResponse
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="OpsBrain Orchestrator", version="0.2.0")
+
+@lru_cache(maxsize=1)
+def get_bus() -> KafkaAgentBus | None:
+    """The Kafka bus when AGENT_TRANSPORT=kafka, else None (agents called over HTTP)."""
+    if not kafka_enabled():
+        return None
+    bus = KafkaAgentBus()
+    bus.start()
+    return bus
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    get_bus()  # connect at startup rather than on the first /ask
+    yield
+    if (bus := get_bus()) is not None:
+        bus.stop()
+
+
+app = FastAPI(title="OpsBrain Orchestrator", version="0.3.0", lifespan=lifespan)
 
 memory = SessionMemory()
 
@@ -31,7 +52,9 @@ def get_graph():
     llm = get_llm()
     if llm is None:
         logger.warning("GOOGLE_API_KEY not set — routing by keywords, no LLM synthesis.")
-    return build_orchestrator_graph(llm=llm)
+    bus = get_bus()
+    logger.info("Calling agents over %s.", "Kafka" if bus else "HTTP")
+    return build_orchestrator_graph(llm=llm, bus=bus)
 
 
 @app.get("/health")

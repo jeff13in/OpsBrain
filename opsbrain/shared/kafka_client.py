@@ -8,12 +8,16 @@ service is sending or receiving.
 from __future__ import annotations
 
 import json
+import logging
+import threading
 from collections.abc import Callable
 from typing import Any
 
 from kafka import KafkaConsumer as _KafkaConsumer
 from kafka import KafkaProducer as _KafkaProducer
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 def serialize_message(message: BaseModel | dict[str, Any]) -> bytes:
@@ -26,6 +30,16 @@ def serialize_message(message: BaseModel | dict[str, Any]) -> bytes:
 def deserialize_message(raw: bytes) -> dict[str, Any]:
     """Turn wire bytes back into a plain dict (callers validate into a model if needed)."""
     return json.loads(raw.decode("utf-8"))
+
+
+def _deserialize_or_none(raw: bytes) -> dict[str, Any] | None:
+    """Consumer-side deserializer: a malformed message becomes None instead of
+    raising inside poll(), which would stop the consumer on that offset for good."""
+    try:
+        return deserialize_message(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        logger.warning("Dropping a Kafka message that isn't UTF-8 JSON.")
+        return None
 
 
 class KafkaProducer:
@@ -51,7 +65,13 @@ class KafkaProducer:
 class KafkaConsumer:
     """Consume messages from a Kafka topic and hand each one to a handler as a dict."""
 
-    def __init__(self, topic: str, bootstrap_servers: str, group_id: str) -> None:
+    def __init__(
+        self,
+        topic: str,
+        bootstrap_servers: str,
+        group_id: str,
+        auto_offset_reset: str = "earliest",
+    ) -> None:
         self.topic = topic
         self.bootstrap_servers = bootstrap_servers
         self.group_id = group_id
@@ -59,15 +79,33 @@ class KafkaConsumer:
             topic,
             bootstrap_servers=bootstrap_servers,
             group_id=group_id,
-            value_deserializer=deserialize_message,
-            auto_offset_reset="earliest",
+            value_deserializer=_deserialize_or_none,
+            auto_offset_reset=auto_offset_reset,
             enable_auto_commit=True,
         )
 
-    def listen(self, handler: Callable[[dict[str, Any]], None]) -> None:
-        """Block, calling handler(message_dict) for each incoming message."""
-        for record in self._consumer:
-            handler(record.value)
+    def listen(
+        self,
+        handler: Callable[[dict[str, Any]], None],
+        stop: threading.Event | None = None,
+        on_ready: Callable[[], None] | None = None,
+    ) -> None:
+        """Block, calling handler(message_dict) for each incoming message.
+
+        Returns once `stop` is set (checked at least every 0.5s). `on_ready` is
+        called once, as soon as partitions are assigned — messages published
+        before that may not be seen by a consumer that starts at "latest".
+        """
+        ready = on_ready is None
+        while stop is None or not stop.is_set():
+            batches = self._consumer.poll(timeout_ms=500)
+            if not ready and self._consumer.assignment():
+                ready = True
+                on_ready()
+            for records in batches.values():
+                for record in records:
+                    if record.value is not None:
+                        handler(record.value)
 
     def close(self) -> None:
         self._consumer.close()

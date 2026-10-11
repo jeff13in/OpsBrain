@@ -24,6 +24,10 @@ spec:
           ports:
             - containerPort: 8001
           env:
+            - name: AGENT_TRANSPORT
+              value: "kafka"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:

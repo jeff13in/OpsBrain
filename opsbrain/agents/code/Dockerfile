@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install --no-cache-dir fastapi uvicorn pydantic
+RUN pip install --no-cache-dir fastapi uvicorn pydantic httpx kafka-python
 COPY shared/            ./shared/
 COPY agents/code/       ./agents/code/
 ENV PYTHONPATH=/app

@@ -1,5 +1,39 @@
 # OPU-82 acceptance check
 
+## Latest live acceptance: passed
+
+Run on October 10, 2026 (America/Toronto; corresponding report time is
+October 11 UTC). This supersedes the historical setup blockers below.
+Local credentials were populated without displaying their values, and the
+RAG/orchestrator/agent images were built and started with Compose.
+
+Both required `scripts.validate_rag` runs exited **0**:
+
+| Question | Ingestion (each of two attempts) | Query result |
+|---|---|---|
+| High CPU | 3 documents, 14 nonzero 3072-dimensional vectors | 4 chunks; `grounded: true`; no validation errors; `[runbook-high-cpu.md]` present |
+| Exhausted DB connections | 3 documents, 14 nonzero 3072-dimensional vectors | 4 chunks; `grounded: true`; no validation errors; `[runbook-db-connections.md]` present |
+
+These runs actually ingested the mounted local runbooks and queried the real
+Gemini embedding and Groq answer services, not mocks. The returned prose was
+not the extractive fallback. The independent `scripts.validate_chat` run also
+passed both RAG API checks (with extractive-fallback detection), both RAG-only
+async pipeline cases, authenticated model discovery and deployed `/ask`.
+See `opu80-live-results.json` for answers, citations, routing and timestamps.
+
+Commands were the two validator commands in the resume section below, with
+`.env` securely loaded into the process and `DATABASE_URL` constructed for
+the local Compose database at `localhost:5434`. No key/password was printed or
+written into evidence. The bundled sources were reingested twice per validator;
+the scripts verified exact persisted chunks without duplicates.
+
+OPU-82's live runbook acceptance is now satisfied. The broader OPU-80/OPU-51
+multi-agent suite is still not fully passing; its monitoring/infra/code failures
+are separate from these successful RAG checks. Linear status was not changed.
+The full regression suite was subsequently rerun with the real local pgvector
+test enabled: **96 passed**, no skips, 19.94s. The database regression rolled
+back all test-created schema objects and rows; 219 upstream warnings remain.
+
 The implementation is already present from OPU-80: `agents/rag/agent.py`
 constructs `get_chat_model("answer")`; its default model is
 `openai/gpt-oss-120b`. Gemini embedding configuration, ingestion, vector schema

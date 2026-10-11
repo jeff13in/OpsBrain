@@ -3,9 +3,58 @@
 Recorded October 10, 2026 (America/Toronto; live report timestamp is UTC).
 Branch: `rifatchowdhury619/opu-80-switch-opsbrain-chat-models-from-gemini-to-groq`.
 
-Implementation and offline validation are done. OPU-80 is **not ready to mark
-complete**: live Groq, persisted embedding, deployment and OPU-51 integration
-acceptance remain unverified. No live provider success is claimed.
+Implementation and provider-level live validation now pass. OPU-80 is **not ready
+to mark complete**: the full OPU-51 multi-agent acceptance still has failures.
+The latest results below supersede historical unavailable-service checks.
+
+## Latest live run: October 10, 2026 (America/Toronto)
+
+`validation/opu80-live-results.json` records timestamp
+`2026-10-11T02:46:33.675349+00:00`. `scripts.validate_chat` exited 1 with
+**13 passed checks, 4 failed checks**, all against live providers/local services:
+
+- Authenticated Groq model discovery passed for all three configured models.
+- All six routing cases passed with schema-valid decisions and expected agent
+  sets; measured routing times ranged from 0.312 to 0.531 seconds.
+- Both RAG API checks passed with grounded metadata, expected citations and
+  no extractive fallback detected.
+- Real Qwen synthesis over explicitly labeled fixture summaries passed;
+  `[runbook-high-cpu.md]`, `[kubernetes:pods]` and unavailable-code reporting
+  were retained. This is real provider inference but not live backend evidence
+  for the synthetic summaries.
+- Both RAG-only async pipeline cases and deployed `/ask` passed.
+- Monitoring-only, infra-only, code-only and all-four pipeline cases failed.
+  All-four retained the successful RAG answer with `partial` status.
+
+Read-only diagnostic queries confirmed the remaining backend causes:
+monitoring `/query` returns 404; infra `/query` returns 500 because no Kubernetes
+configuration is available; code `/query` returns 500 because `GITHUB_REPO` is
+unset. Kafka is still not connected on this branch. No alternate branches were
+merged, no operational write commands were executed against AWS/Kubernetes/GitHub,
+and no failure was converted into a fabricated success.
+
+Both `scripts.validate_rag` commands (high CPU and DB connections) separately
+exited 0. Each verified ingestion twice: 3 documents, 14 exact nonzero
+3072-dimensional vectors; both queries returned 4 chunks, `grounded: true`,
+empty validation errors and the expected citation. See `OPU-82.md`.
+
+Live commands ran from `opsbrain/`: securely load `.env`, set host agent URLs
+to ports 8001–8004, and run the documented validators. The host RAG validator
+used the Compose database at port 5434. All five agents passed `/health`;
+Postgres and Prometheus were healthy. The local services remain running for
+further validation. The created database is local, and only mounted bundled
+runbooks were ingested. Earlier statements about no DB writes describe the
+initial implementation turn, not this subsequent live-validation run.
+
+429/no-retry and deadline cancellation remain deterministic mocked checks;
+the live run did not intentionally exhaust account limits or simulate failures
+against the external providers. Ollama and Kubernetes rollout remain untested.
+
+The full regression suite was rerun with `RAG_TEST_DATABASE_URL` securely
+constructed for the local database: **96 passed**, no skips, 19.94s, with 219
+upstream deprecation warnings. The real pgvector schema/cosine-search regression
+used a temporary schema and rolled back every test-created object/row.
+`git diff --check` passed (line-ending normalization warnings only).
 
 ## Models and compatibility
 

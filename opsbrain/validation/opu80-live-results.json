@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-11T01:57:56.633005+00:00",
+  "timestamp": "2026-10-11T02:46:33.675349+00:00",
   "mode": "live-provider-and-live-HTTP-services",
   "models": {
     "router": "openai/gpt-oss-20b",
@@ -11,9 +11,319 @@
   "question_set_origin": "Reconstructed from repository runbooks and Linear OPU-51 scope; no original question set exists here",
   "checks": [
     {
-      "name": "live-validation",
-      "status": "not-executed",
-      "reason": "LLM_API_KEY is not configured"
+      "name": "provider-model-discovery",
+      "status": "passed",
+      "missing_models": []
+    },
+    {
+      "name": "routing",
+      "case": "high-cpu",
+      "status": "passed",
+      "expected_agents": [
+        "rag"
+      ],
+      "routing": {
+        "agents": [
+          "rag"
+        ],
+        "method": "llm",
+        "reason": "Troubleshooting high CPU usage"
+      },
+      "seconds": 0.531
+    },
+    {
+      "name": "routing",
+      "case": "db-connections",
+      "status": "passed",
+      "expected_agents": [
+        "rag"
+      ],
+      "routing": {
+        "agents": [
+          "rag"
+        ],
+        "method": "llm",
+        "reason": "Troubleshooting database connection exhaustion"
+      },
+      "seconds": 0.5
+    },
+    {
+      "name": "routing",
+      "case": "monitoring",
+      "status": "passed",
+      "expected_agents": [
+        "monitoring"
+      ],
+      "routing": {
+        "agents": [
+          "monitoring"
+        ],
+        "method": "llm",
+        "reason": "Monitoring question about alerts"
+      },
+      "seconds": 0.375
+    },
+    {
+      "name": "routing",
+      "case": "infra",
+      "status": "passed",
+      "expected_agents": [
+        "infra"
+      ],
+      "routing": {
+        "agents": [
+          "infra"
+        ],
+        "method": "llm",
+        "reason": "The question asks for the current state of Kubernetes pods, which is handled by the infra agent."
+      },
+      "seconds": 0.312
+    },
+    {
+      "name": "routing",
+      "case": "code",
+      "status": "passed",
+      "expected_agents": [
+        "code"
+      ],
+      "routing": {
+        "agents": [
+          "code"
+        ],
+        "method": "llm",
+        "reason": "User is asking about open pull requests on GitHub."
+      },
+      "seconds": 0.36
+    },
+    {
+      "name": "routing",
+      "case": "multi-agent",
+      "status": "passed",
+      "expected_agents": [
+        "rag",
+        "monitoring",
+        "infra",
+        "code"
+      ],
+      "routing": {
+        "agents": [
+          "rag",
+          "monitoring",
+          "infra",
+          "code"
+        ],
+        "method": "llm",
+        "reason": "All four agents are needed: rag for runbooks, monitoring for metrics, infra for pod state, and code for PRs."
+      },
+      "seconds": 0.312
+    },
+    {
+      "name": "rag-api",
+      "case": "high-cpu",
+      "status": "passed",
+      "grounded": true,
+      "citation_present": true,
+      "extractive_fallback_detected": false,
+      "sources": [
+        "runbook-high-cpu.md",
+        "runbook-high-cpu.md",
+        "runbook-high-cpu.md",
+        "runbook-db-connections.md"
+      ],
+      "answer": "**When you see sustained high CPU (>\u202f80\u202f%) on an OpsBrain pod or its EC2 node, follow these steps**\n\n### 1. Diagnose the cause  \n1. **Find the hot pod / node**  \n   ```bash\n   kubectl top pods -n opsbrain --sort-by=cpu\n   kubectl top nodes\n   ```  \n2. **Inspect recent logs** for errors or time\u2011outs  \n   ```bash\n   kubectl logs -n opsbrain <pod\u2011name> --tail=200 | grep -i \"error\\|timeout\\|slow\"\n   ```  \n3. **Check recent deployments** \u2013 a new image may have introduced the spike  \n   ```bash\n   kubectl rollout history deployment/<agent\u2011name> -n opsbrain\n   ```  \n4. **Look at the exact CPU metric in Prometheus**  \n   ```promql\n   rate(process_cpu_seconds_total{namespace=\"opsbrain\"}[5m]) * 100\n   ```  \n5. **If the RAG agent is the culprit, examine DB queries**  \n   ```sql\n   SELECT query, calls, mean_exec_time, total_exec_time\n   FROM pg_stat_statements\n   ORDER BY total_exec_time DESC\n   LIMIT 10;\n   ```\n\n### 2. Immediate mitigation  \n- **Option A \u2013 Scale out**  \n  ```bash\n  kubectl scale deployment <agent\u2011name> -n opsbrain --replicas=5\n  ```  \n- **Option B \u2013 Roll back the last deployment**  \n  ```bash\n  kubectl rollout undo deployment/<agent\u2011name> -n opsbrain\n  kubectl rollout status deployment/<agent\u2011name> -n opsbrain\n  ```  \n- **Option C \u2013 Increase node capacity** (if nodes are the bottleneck)  \n  Edit `infra/terraform/variables.tf` \u2192 `eks_desired_nodes` and run  \n  ```bash\n  terraform apply -var=\"eks_desired_nodes=4\"\n  ```\n\n### 3. Post\u2011incident root\u2011cause analysis (to prevent recurrence)  \n1. Diff the last two image tags in ECR.  \n2. Review traffic patterns on the Grafana \u201cRequests per second\u201d dashboard.  \n3. Check if a large RAG ingest batch blocked the event loop.  \n4. Verify that pgvector HNSW indexes exist (missing indexes cause full table scans).  \n\n### 4. Prevention  \n- Set CPU limits on every pod (`k8s/*.yaml`).  \n- Configure HPA, e.g. `kubectl autoscale deployment rag-agent --min=2 --max=10 --cpu-percent=70`.  \n- Run the RAG ingestor as a separate Kubernetes Job, not inline with the API server.  \n- Add pgvector HNSW indexes after the first 100 documents are ingested.  \n\n*(All steps sourced from the \u201cHigh CPU Usage\u201d runbook\u202f[runbook\u2011high\u2011cpu.md])*\n\nSources: [runbook-db-connections.md], [runbook-high-cpu.md]"
+    },
+    {
+      "name": "rag-api",
+      "case": "db-connections",
+      "status": "passed",
+      "grounded": true,
+      "citation_present": true,
+      "extractive_fallback_detected": false,
+      "sources": [
+        "runbook-db-connections.md",
+        "runbook-db-connections.md",
+        "runbook-db-connections.md",
+        "runbook-high-cpu.md"
+      ],
+      "answer": "**Handling exhausted PostgreSQL connections**\n\n1. **Immediate mitigation**  \n   * **Kill idle/idle\u2011in\u2011transaction sessions** \u2013 terminate connections that have been idle\u202f>\u202f5\u202fmin:  \n     ```sql\n     SELECT pg_terminate_backend(pid)\n     FROM pg_stat_activity\n     WHERE state IN ('idle','idle in transaction')\n       AND query_start < now() - interval '5 minutes';\n     ```\u3010runbook-db-connections.md\u3011  \n   * **Restart the affected pod** \u2013 forces all its connections to close:  \n     ```bash\n     kubectl rollout restart deployment/rag-agent -n opsbrain\n     ```\u3010runbook-db-connections.md\u3011  \n   * **Deploy PgBouncer** (or another pooler) as a sidecar or separate service to throttle connections before they hit RDS. This is the permanent fix for saturation.\u3010runbook-db-connections.md\u3011\n\n2. **Root\u2011cause remediation**  \n   * **Add a connection pool** \u2013 replace per\u2011request `psycopg2.connect()` with `psycopg2.pool.ThreadedConnectionPool` or switch to `asyncpg` with an async pool.\u3010runbook-db-connections.md\u3011  \n   * **Guard connections with context managers** to avoid leaks:  \n     ```python\n     with psycopg2.connect(...) as conn:\n         with conn.cursor() as cur:\n             cur.execute(...)\n     ```\u3010runbook-db-connections.md\u3011  \n   * **Separate heavy ingestion jobs** \u2013 run the ingestor in its own Job or limit concurrency with a semaphore so it doesn\u2019t compete for the same pool.\u3010runbook-db-connections.md\u3011\n\n3. **Prevention / monitoring**  \n   * Set an alert when `max_connections` exceeds\u202f80\u202f% of its limit.  \n   * Enable `statement_timeout = '30s'` to kill runaway queries.  \n   * Continuously monitor `pg_stat_activity` and Prometheus alert `PostgresConnectionsNearLimit`.\u3010runbook-db-connections.md\u3011\n\nFollow the steps above to clear the immediate blockage, fix the underlying pooling issue, and put alerts in place to avoid future exhaustion.\n\nSources: [runbook-db-connections.md], [runbook-high-cpu.md]"
+    },
+    {
+      "name": "live-synthesis-with-fixture-summaries",
+      "status": "passed",
+      "answer": "Based on the available agent responses, here is the summary of high CPU findings:\n\n*   **Runbook Reference:** The Scale API runbook (`runbook-high-cpu.md`) was identified as a relevant source for high CPU issues [rag].\n*   **Infrastructure Status:** Two pods are currently ready [infra].\n*   **Missing Information:** The code analysis agent was unavailable, so no code-level findings are included [code].\n\n**Note:** The specific details from the runbook and the exact CPU metrics for the pods were not provided in the agent outputs, only the source references and pod status.\n\nSources: [runbook-high-cpu.md], [kubernetes:pods]\n\nUnavailable: code (unavailable)."
+    },
+    {
+      "name": "async-HTTP-pipeline",
+      "case": "high-cpu",
+      "status": "passed",
+      "pipeline_status": "ok",
+      "routing": {
+        "agents": [
+          "rag"
+        ],
+        "method": "llm",
+        "reason": "Troubleshooting high CPU usage"
+      },
+      "agent_results": [
+        {
+          "agent": "rag",
+          "status": "ok",
+          "error_code": null,
+          "sources": [
+            "runbook-high-cpu.md",
+            "runbook-high-cpu.md",
+            "runbook-high-cpu.md",
+            "runbook-db-connections.md"
+          ]
+        }
+      ],
+      "answer": "**When you see sustained high CPU (>\u202f80\u202f%) on an OpsBrain pod or its EC2 node, follow these steps**\n\n### 1. Diagnose the spike  \n1. **Find the hot pod / node**  \n   ```bash\n   kubectl top pods -n opsbrain --sort-by=cpu\n   kubectl top nodes\n   ```  \n2. **Inspect recent logs** for errors or time\u2011outs  \n   ```bash\n   kubectl logs -n opsbrain <pod\u2011name> --tail=200 | grep -i \"error\\|timeout\\|slow\"\n   ```  \n3. **Check if a recent deployment caused it**  \n   ```bash\n   kubectl rollout history deployment/<agent\u2011name> -n opsbrain\n   ```  \n4. **Look at the exact CPU metric in Prometheus**  \n   ```promql\n   rate(process_cpu_seconds_total{namespace=\"opsbrain\"}[5m]) * 100\n   ```  \n5. **If the RAG agent is the culprit, examine DB queries**  \n   ```sql\n   SELECT query, calls, mean_exec_time, total_exec_time\n   FROM pg_stat_statements\n   ORDER BY total_exec_time DESC\n   LIMIT 10;\n   ```\n\n### 2. Immediate mitigation  \n- **Option A \u2013 Scale out**  \n  ```bash\n  kubectl scale deployment <agent\u2011name> -n opsbrain --replicas=5\n  ```  \n- **Option B \u2013 Roll back the last deployment**  \n  ```bash\n  kubectl rollout undo deployment/<agent\u2011name> -n opsbrain\n  kubectl rollout status deployment/<agent\u2011name> -n opsbrain\n  ```  \n- **Option C \u2013 Increase node capacity** (if nodes are the bottleneck)  \n  Edit `infra/terraform/variables.tf` \u2192 `eks_desired_nodes` and run  \n  ```bash\n  terraform apply -var=\"eks_desired_nodes=4\"\n  ```\n\n### 3. Post\u2011incident root\u2011cause analysis (to prevent recurrence)  \n1. Diff the last two image tags in ECR (deployment delta).  \n2. Review traffic patterns on the Grafana \u201cRequests per second\u201d dashboard.  \n3. Check for large embedding batches that may block the event loop.  \n4. Verify pgvector indexes (missing HNSW index can cause full table scans).  \n\n### 4. Prevention  \n- Set CPU limits on every pod (`k8s/*.yaml`).  \n- Configure HPA, e.g. `kubectl autoscale deployment rag-agent --min=2 --max=10 --cpu-percent=70`.  \n- Run the RAG ingestor as a separate Kubernetes Job, not inline with the API server.  \n- Add pgvector HNSW index after the first 100 documents are ingested.  \n\n*(All steps sourced from the \u201cHigh CPU Usage\u201d runbook\u202f[runbook\u2011high\u2011cpu.md])*\n\nSources: [runbook-db-connections.md], [runbook-high-cpu.md]"
+    },
+    {
+      "name": "async-HTTP-pipeline",
+      "case": "db-connections",
+      "status": "passed",
+      "pipeline_status": "ok",
+      "routing": {
+        "agents": [
+          "rag"
+        ],
+        "method": "llm",
+        "reason": "Troubleshooting database connection exhaustion"
+      },
+      "agent_results": [
+        {
+          "agent": "rag",
+          "status": "ok",
+          "error_code": null,
+          "sources": [
+            "runbook-db-connections.md",
+            "runbook-db-connections.md",
+            "runbook-db-connections.md",
+            "runbook-high-cpu.md"
+          ]
+        }
+      ],
+      "answer": "**Handling exhausted PostgreSQL connections**\n\n1. **Immediate mitigation**  \n   * **Kill idle/idle\u2011in\u2011transaction sessions** \u2013 terminate connections that have been idle\u202f>\u202f5\u202fmin:  \n     ```sql\n     SELECT pg_terminate_backend(pid)\n     FROM pg_stat_activity\n     WHERE state IN ('idle','idle in transaction')\n       AND query_start < now() - interval '5 minutes';\n     ```\u3010runbook-db-connections.md\u3011  \n   * **Restart the affected pod** \u2013 forces all its connections to close:  \n     ```bash\n     kubectl rollout restart deployment/rag-agent -n opsbrain\n     ```\u3010runbook-db-connections.md\u3011  \n   * **Deploy PgBouncer** (or another pooler) as a sidecar or separate service to throttle connections before they hit RDS. This is the permanent fix for saturation.\u3010runbook-db-connections.md\u3011\n\n2. **Root\u2011cause remediation**  \n   * **Add a connection pool** \u2013 replace per\u2011request `psycopg2.connect()` with `psycopg2.pool.ThreadedConnectionPool` or switch to `asyncpg` with an async pool.\u3010runbook-db-connections.md\u3011  \n   * **Guard connections with context managers** to avoid leaks:  \n     ```python\n     with psycopg2.connect(...) as conn:\n         with conn.cursor() as cur:\n             cur.execute(...)\n     ```\u3010runbook-db-connections.md\u3011  \n   * **Separate heavy ingestion jobs** \u2013 run the ingestor in its own Job or limit concurrency with a semaphore so it doesn\u2019t compete for the same pool.\u3010runbook-db-connections.md\u3011\n\n3. **Prevention / monitoring**  \n   * Set an alert when `max_connections` exceeds\u202f80\u202f% of its limit.  \n   * Enable `statement_timeout = '30s'` to kill runaway queries.  \n   * Continuously monitor `pg_stat_activity` and Prometheus alert `PostgresConnectionsNearLimit`.\u3010runbook-db-connections.md\u3011\n\nFollow the immediate steps first, then implement pooling and monitoring to stop future exhaustion.\n\nSources: [runbook-db-connections.md], [runbook-high-cpu.md]"
+    },
+    {
+      "name": "async-HTTP-pipeline",
+      "case": "monitoring",
+      "status": "failed",
+      "pipeline_status": "error",
+      "routing": {
+        "agents": [
+          "monitoring"
+        ],
+        "method": "llm",
+        "reason": "Monitoring question about alerts"
+      },
+      "agent_results": [
+        {
+          "agent": "monitoring",
+          "status": "error",
+          "error_code": "bad_request",
+          "sources": []
+        }
+      ],
+      "answer": "No agent was able to answer this question.\n\nUnavailable: monitoring (bad_request)"
+    },
+    {
+      "name": "async-HTTP-pipeline",
+      "case": "infra",
+      "status": "failed",
+      "pipeline_status": "error",
+      "routing": {
+        "agents": [
+          "infra"
+        ],
+        "method": "llm",
+        "reason": "The question asks for the current state of Kubernetes pods, which is handled by the infra agent."
+      },
+      "agent_results": [
+        {
+          "agent": "infra",
+          "status": "error",
+          "error_code": "agent_error",
+          "sources": []
+        }
+      ],
+      "answer": "No agent was able to answer this question.\n\nUnavailable: infra (agent_error)"
+    },
+    {
+      "name": "async-HTTP-pipeline",
+      "case": "code",
+      "status": "failed",
+      "pipeline_status": "error",
+      "routing": {
+        "agents": [
+          "code"
+        ],
+        "method": "llm",
+        "reason": "User is asking about open pull requests on GitHub."
+      },
+      "agent_results": [
+        {
+          "agent": "code",
+          "status": "error",
+          "error_code": "agent_error",
+          "sources": []
+        }
+      ],
+      "answer": "No agent was able to answer this question.\n\nUnavailable: code (agent_error)"
+    },
+    {
+      "name": "async-HTTP-pipeline",
+      "case": "multi-agent",
+      "status": "failed",
+      "pipeline_status": "partial",
+      "routing": {
+        "agents": [
+          "rag",
+          "monitoring",
+          "infra",
+          "code"
+        ],
+        "method": "llm",
+        "reason": "All four agents are needed: rag for runbooks, monitoring for metrics, infra for pod state, and code for PRs."
+      },
+      "agent_results": [
+        {
+          "agent": "rag",
+          "status": "ok",
+          "error_code": null,
+          "sources": [
+            "runbook-high-cpu.md",
+            "runbook-high-cpu.md",
+            "runbook-high-cpu.md",
+            "observability.md"
+          ]
+        },
+        {
+          "agent": "monitoring",
+          "status": "error",
+          "error_code": "bad_request",
+          "sources": []
+        },
+        {
+          "agent": "infra",
+          "status": "error",
+          "error_code": "agent_error",
+          "sources": []
+        },
+        {
+          "agent": "code",
+          "status": "error",
+          "error_code": "agent_error",
+          "sources": []
+        }
+      ],
+      "answer": "[rag] **Investigation workflow for a sustained\u202f>\u202f80\u202f% CPU spike**\n\n1. **Locate the offending pod / node**  \n   ```bash\n   kubectl top pods -n opsbrain --sort-by=cpu      # shows per\u2011pod CPU usage\n   kubectl top nodes                               # shows node\u2011level CPU pressure\n   ```  \n   The pod that appears at the top is the \u201chot\u201d pod you\u2019ll focus on\u3010runbook-high-cpu.md\u3011.\n\n2. **Pull recent logs from that pod**  \n   ```bash\n   kubectl logs -n opsbrain <pod\u2011name> --tail=200 |\n     grep -i \"error\\|timeout\\|slow\"\n   ```  \n   Look for error patterns that could be driving CPU work\u3010runbook-high-cpu.md\u3011.\n\n3. **Determine whether a recent code change caused the spike**  \n   *Check the deployment history*  \n   ```bash\n   kubectl rollout history deployment/<agent\u2011name> -n opsbrain\n   ```  \n   *Cross\u2011reference with GitHub* \u2013 open the PR(s) that merged the last image tag shown in the rollout history. Review the diff for new logic, increased batch sizes, or removed indexes that could increase CPU load\u3010runbook-high-cpu.md\u3011.\n\n4. **Validate the exact metric in Prometheus**  \n   ```promql\n   rate(process_cpu_seconds_total{namespace=\"opsbrain\"}[5m]) * 100\n   ```  \n   This query gives the per\u2011pod CPU utilization over the last 5\u202fminutes. Compare the value to the alert threshold (80\u202f%)\u3010runbook-high-cpu.md\u3011.\n\n5. **If the CPU is in the RAG agent, check database side\u2011effects**  \n   ```sql\n   SELECT query, calls, mean_exec_time, total_exec_time\n   FROM pg_stat_statements\n   ORDER BY total_exec_time DESC\n   LIMIT 10;\n   ```  \n   Slow or missing pgvector indexes often surface as high CPU in the agent\u3010runbook-high-cpu.md\u3011.\n\n6. **Immediate mitigation (choose one)**  \n   - **Scale out**: `kubectl scale deployment <agent\u2011name> -n opsbrain --replicas=5`\u3010runbook-high-cpu.md\u3011  \n   - **Rollback**: `kubectl rollout undo deployment/<agent\u2011name> -n opsbrain` and watch the status\u3010runbook-high-cpu.md\u3011  \n   - **Add node capacity**: update `eks_desired_nodes` in Terraform and run `terraform apply`\u3010runbook-high-cpu.md\u3011.\n\n7. **Post\u2011incident root\u2011cause analysis**  \n   1. Diff the last two image tags in ECR (identified from the rollout history).  \n   2. Review traffic patterns on the Grafana \u201cRequests per second\u201d dashboard.  \n   3. Check if a large RAG ingest batch ran and blocked the event loop.  \n   4. Verify the pgvector HNSW index exists; a missing index forces full table scans\u3010runbook-high-cpu.md\u3011.\n\n8. **Prevention**  \n   - Enforce CPU limits in the pod specs (`k8s/*.yaml`).  \n   - Configure HPA: `kubectl autoscale deployment rag-agent --min=2 --max=10 --cpu-percent=70`.  \n   - Run heavy ingest jobs as separate Kubernetes Jobs, not inline with the API server.  \n   - Add the pgvector HNSW index after the first 100 documents are ingested\u3010runbook-high-cpu.md\u3011.\n\nSources: [observability.md], [runbook-high-cpu.md]\n\nUnavailable: monitoring (bad_request), infra (agent_error), code (agent_error)"
+    },
+    {
+      "name": "deployed-ask-contract",
+      "status": "passed",
+      "pipeline_status": "ok"
     }
   ]
 }

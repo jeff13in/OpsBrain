@@ -24,6 +24,10 @@ spec:
             - name: http
               containerPort: 8004
           env:
+            - name: AGENT_TRANSPORT
+              value: "kafka"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:

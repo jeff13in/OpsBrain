@@ -1046,6 +1046,11 @@ successful answers (or labeled-sections fallback). Responses use the
 and `request_id`. Partial failures retain available answers; all-agent failure
 returns HTTP 502. Optional `session_id` enables bounded in-process history.
 
+With the opt-in Kafka overlay (`docker compose -f docker-compose.yml -f docker-compose.kafka.yml --profile full up --build -d`),
+agent calls travel over Kafka instead of HTTP; see `orchestrator/CONTRACT.md` §3a. The OPU-51 live run on
+the real broker (all four agents in one question, a stopped agent timing out at 30s, a restarted agent skipping
+the request it missed, 8 concurrent `/ask`s) is recorded in [`validation/OPU-51.md`](validation/OPU-51.md).
+
 ### Calling Infra and Code directly
 
 You can also bypass routing using the agents' own ports — same PowerShell
@@ -1253,6 +1258,13 @@ pytest tests\ -v --tb=short
   connects to a broker immediately, so that part is intentionally not
   unit-tested — it was verified manually against the real `kafka`
   container instead (not part of this automated suite).
+- `tests\test_agent_bus.py` — Orchestrator ↔ agent messaging over Kafka
+  (`shared/agent_bus.py`), using an in-memory broker that still goes through
+  the real serialize/deserialize: round trips, the graph fanning out over
+  Kafka, 503 retry, 4xx/5xx/invalid replies, timeouts, broker failures,
+  expired/malformed requests. No real broker involved (that's OPU-51).
+- `tests\test_monitoring_query.py` — the Monitoring agent's `/query`
+  (alerts, pod health, scrape targets; 503 when a backend is down), mocked.
 - **No automated tests exist for the Code Agent in this branch** — no
   `test_code_agent.py`. Its correctness so far has only been verified
   through the manual/live checks documented in §5 and §7 (including a real
@@ -1329,7 +1341,7 @@ opsbrain/
 - [x] Kafka producer/consumer — real `kafka-python`-backed client in `shared/kafka_client.py`, verified against a live broker
 - [x] CI pipeline — lint, test, build, and publish images to GHCR (see the repo-root `.github/workflows/ci-cd.yml`); the `deploy` stage's working-directory bug is fixed, though it still can't succeed end-to-end until the next item below is done
 - [x] Orchestrator HTTP/Kafka routing and synthesis (live RAG+Monitoring verified; full backend setup still required)
-- [x] Opt-in Kafka workers and orchestrator request/reply integration
+- [x] Opt-in Kafka workers and orchestrator request/reply integration (OPU-50; live run in OPU-51)
 - [x] `/metrics` endpoints, Grafana dashboards, Loki logging, and alert rules (OPU-56)
 - [x] Optional kubeconfig mounting via `docker-compose.kubernetes.yml` (real cluster still required)
 - [ ] Terraform CLI installed in the Infra Agent's image (§4, Limitation 3)

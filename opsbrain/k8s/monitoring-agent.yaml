@@ -24,6 +24,10 @@ spec:
             - name: http
               containerPort: 8002
           env:
+            - name: AGENT_TRANSPORT
+              value: "kafka"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
             - name: PROMETHEUS_URL
               value: "http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090"
             - name: PROMETHEUS_BASE_URL

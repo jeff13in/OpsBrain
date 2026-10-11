@@ -83,6 +83,8 @@ def health() -> HealthResponse:
 
 @app.post("/query")
 def query(request: QueryRequest) -> dict[str, Any]:
+    """Orchestrator entry point. 503 when Prometheus/Alertmanager can't be queried —
+    never a 200 with the error as the answer."""
     try:
         return get_agent().ask(request.question)
     except ValueError as exc:

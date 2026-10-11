@@ -13,7 +13,7 @@ and the orchestrator/agent contract is [`opsbrain/orchestrator/CONTRACT.md`](ops
 
 | Branch | What it is |
 |---|---|
-| `jeffin-dev` | **Active development branch.** CI runs on every push |
+| `jeffin-dev` | Main development branch; CI runs on every push. Behind `rifat-updated` until that is merged in by PR |
 | `rifat-updated` | **Everything below describes this branch:** Groq chat models (OPU-80–83), observability (OPU-56), Kafka transport (OPU-50) and the OPU-51 live-run fixes, merged together |
 | `main` | Stable branch, last updated from `jeffin-dev` via PR #1 (Sept 8), plus a title rename on Oct 2. Behind `jeffin-dev` |
 | `Rifat` | Rifat's original work in the old root layout (`rag/`, `monitoring/`, `data/`). Fully merged into `jeffin-dev` (PR #2), so start new work from `jeffin-dev` instead |
@@ -54,7 +54,8 @@ User (curl / CLI / Slack later)
 | **Monitoring Agent** | ✅ Working (`/query` added in OPU-50) | Prometheus queries, Grafana dashboards, Alertmanager alerts, pod health, scrape-target status; `/query` answers every topic a question mentions |
 | **Infra Agent** | ✅ Working (OPU-48, OPU-62) | EC2/EKS/RDS state, Kubernetes pods/nodes/deployments/resource usage, Terraform plan, combined health summary |
 | **Code Agent** | ✅ Working (OPU-49, OPU-62) | PRs and their CI status, commits, workflow runs, deployments; can rerun/trigger workflows via explicit endpoints only |
-| **Kafka** | ✅ Wired in and run live (OPU-47/50/51) | Carries every orchestrator → agent request and reply. Live results: [`opsbrain/validation/OPU-51.md`](opsbrain/validation/OPU-51.md) |
+| **Kafka** | ✅ Opt-in transport, run live (OPU-47/50/51) | Carries orchestrator → agent requests and replies when enabled (Compose overlay; on by default in `k8s/`). Live results: [`opsbrain/validation/OPU-51.md`](opsbrain/validation/OPU-51.md) |
+| **Observability** | ✅ Working locally (OPU-56) | `/metrics` on every service, Grafana dashboards *Service Health*, *Agent Activity* and *Monitoring Overview*, JSON logs in Loki, 6 alert rules. See [`opsbrain/docs/observability.md`](opsbrain/docs/observability.md) |
 | **CI/CD** | ✅ Lint + tests + image builds to GHCR | Tests now fail the build when they fail. AWS deploy stage is not live |
 
 ---
@@ -128,7 +129,8 @@ per call, GitHub 10s per request.
 
 ### Prerequisites
 - Docker + Docker Compose
-- A Google AI Studio API key (free: https://aistudio.google.com/apikey)
+- A Groq API key for chat models (free: https://console.groq.com/keys)
+- A Google AI Studio API key for RAG embeddings (free: https://aistudio.google.com/apikey)
 - Optional: AWS credentials / kubeconfig (Infra Agent), `GITHUB_TOKEN` + `GITHUB_REPO` (Code Agent)
 
 A fresh clone has everything `docker-compose.yml` mounts: the runbooks (`docs/`),
@@ -145,9 +147,15 @@ cp .env.example .env
 
 ### 2. Start everything
 ```bash
-docker compose --profile full up --build -d
+docker compose --profile full up --build -d       # agents called over HTTP
 docker compose ps
 ```
+To call the agents over Kafka instead, add the overlay:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.kafka.yml --profile full up --build -d
+```
+To give the Infra agent a real cluster, add `-f docker-compose.kubernetes.yml` and set
+`KUBECONFIG_HOST` to your kubeconfig's absolute path.
 
 | Service | Address |
 |---|---|
@@ -155,19 +163,26 @@ docker compose ps
 | RAG / Monitoring / Infra / Code agents | http://localhost:8001 / 8002 / 8003 / 8004 |
 | Postgres (pgvector) | localhost:**5434** (5432/5433 are taken by native Postgres installs on the dev Mac) |
 | Prometheus / Alertmanager / Grafana | http://localhost:9090 / 9093 / 3000 |
+| Loki (logs, query it through Grafana) | http://localhost:3100 |
 | Demo pod metrics | http://localhost:9100 |
 | Kafka | localhost:9092 |
 
-`docker compose --profile full down` stops everything; database and Kafka data
-survive in volumes.
+`docker compose --profile full down` stops everything; database, Kafka, Prometheus,
+Grafana and Loki data survive in volumes.
+
+**On this Mac** the `docker` command in `/usr/local/bin` points at the old installer disk
+image. Use `/Applications/Docker.app/Contents/Resources/bin/docker`, or put that folder first
+on your `PATH`.
 
 ### 3. Load the runbooks
 `opsbrain/docs/` is mounted into the RAG agent as `/app/data`:
 ```bash
 curl -s -X POST http://localhost:8001/ingest \
   -H "Content-Type: application/json" -d '{"directory": "/app/data"}'
-# → {"documents_processed": 2, "chunks_stored": ...}
+# → {"documents_processed": 3, "chunks_stored": ...}
 ```
+The three documents are the two runbooks plus `docs/observability.md`, which lives in
+the same folder.
 
 ### 4. Ask the orchestrator
 ```bash
@@ -226,6 +241,8 @@ curl -s -X POST http://localhost:8002/metrics/query -H "Content-Type: applicatio
 Expected: two demo pods (one healthy, one degraded), one active
 `DemoPodRestarting` warning, and a non-zero `result_count`.
 
+Every service, the orchestrator included, also serves Prometheus metrics at `GET /metrics`.
+
 ### Infra Agent (:8003)
 `POST /query` plus typed endpoints: `/aws/instances`, `/aws/instances/summary`,
 `/aws/eks`, `/aws/rds`, `/k8s/pods`, `/k8s/nodes`, `/k8s/deployments`,
@@ -261,20 +278,31 @@ OpsBrain/                      ← git repo root (github.com/jeff13in/OpsBrain)
     │   ├── monitoring/       Prometheus / Grafana / Alertmanager tools
     │   ├── infra/            AWS, Kubernetes, Terraform tools
     │   └── code/             GitHub PRs, commits, Actions, deployments
-    ├── shared/               Pydantic models (incl. contract), config, Kafka client,
-    │                         agent_bus.py (orchestrator ↔ agent request/reply over Kafka)
-    ├── docs/                 runbooks the RAG agent ingests
+    ├── shared/
+    │   ├── models.py         Pydantic models, incl. the orchestrator contract
+    │   ├── llm.py            chat model per step (Groq or any OpenAI-compatible endpoint)
+    │   ├── agent_bus.py      orchestrator ↔ agent request/reply over Kafka
+    │   ├── kafka_client.py   Kafka producer/consumer
+    │   └── observability.py  /metrics, request metrics, JSON logging
+    ├── docs/                 runbooks the RAG agent ingests, plus observability.md
     ├── database/init.sql     pgvector schema, applied on first Postgres start
     ├── infra/
     │   ├── prometheus/       scrape config + alert rules
     │   ├── alertmanager/     alert routing (local: no-op receiver)
-    │   ├── grafana/          datasource + "OpsBrain Monitoring Overview" dashboard
+    │   ├── grafana/          Prometheus + Loki datasources; Service Health, Agent Activity and Monitoring Overview dashboards
+    │   ├── loki/, promtail/  local log storage and collection
+    │   ├── helm/             values for kube-prometheus-stack, Loki and Promtail on k8s
     │   └── terraform/        AWS infrastructure (VPC, EKS, RDS, S3); not applied yet
     ├── k8s/                  Kubernetes manifests; not deployed yet
     ├── tests/                unit + integration tests (run offline)
-    ├── scripts/validate_rag.py   live RAG check against Postgres + Gemini
-    ├── validation/           OPU-40 (RAG) and OPU-51 (full Kafka pipeline) validation records
-    └── docker-compose.yml
+    ├── scripts/
+    │   ├── validate_rag.py        live RAG check (Postgres + embeddings + answer)
+    │   ├── validate_chat.py       live Groq routing, RAG and synthesis check
+    │   └── validate_transport.py  live /ask smoke test over HTTP or Kafka
+    ├── validation/           live-run records: OPU-40 (RAG), OPU-51 (Kafka pipeline), OPU-80/82/83 (Groq)
+    ├── docker-compose.yml             full local stack (HTTP between services)
+    ├── docker-compose.kafka.yml       overlay: agents over Kafka
+    └── docker-compose.kubernetes.yml  overlay: mount a kubeconfig for the Infra agent
 ```
 
 ---
@@ -290,7 +318,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/ruff check agents/ orchestrator/ shared/
 ```
 CI runs the same two commands on every push to `main` or `jeffin-dev` (and on PRs
-into `main`), and a failing test fails the build. Current count: 131 passed, 1 skipped
+into `main`), and a failing test fails the build. Current count: 135 passed, 1 skipped
 (`test_database.py` needs `RAG_TEST_DATABASE_URL`).
 
 ### Live RAG check
@@ -302,6 +330,15 @@ PYTHONPATH=agents .venv/bin/python -m scripts.validate_rag --directory docs --ap
 ```
 `--directory` is where this script reads the runbooks (on your machine);
 `--api-directory` is where the RAG container sees the same files.
+
+### Live Groq and transport checks
+Both need the stack running and use real Groq quota:
+```bash
+.venv/bin/python -m scripts.validate_chat                                  # routing, RAG, synthesis
+.venv/bin/python -m scripts.validate_transport --transport kafka --output /tmp/kafka.json
+```
+`validate_transport` checks whichever transport the stack is running; start it with the
+matching Compose files first.
 
 ### Add a runbook
 Put a `.md` or `.txt` file in `opsbrain/docs/` and run the ingest command again.
@@ -315,8 +352,13 @@ Put a `.md` or `.txt` file in `opsbrain/docs/` and run the ingest command again.
 - **Questions under 5 characters fail** ("hi" → RAG's 422 → HTTP 502); see `CONTRACT.md` gap 3.
 - **Groq's free tier allows about 1,000 requests and 200K tokens a day per model**; RAG answers
   (~3,300 tokens each) are the binding limit at roughly 60 a day.
-- **Alert thresholds need tuning** (review on OPU-64): the latency alerts fire at 2s/10s, but RAG
-  and `/ask` normally take 5–28s.
+- **Some alerts need tuning** (review on OPU-64). The latency alerts fire at 2s and 10s, but RAG
+  and `/ask` normally take several seconds, up to about 28s. The critical "repeated agent failures"
+  alert also counts user errors (like a too-short question) and missing credentials.
+- **Promtail reached end of life on March 2, 2026**; Grafana Alloy replaces it. Locally it also
+  can't read container logs on Docker Desktop for Mac, so Loki stays empty on our Macs.
+- **On k8s the Grafana dashboards don't load yet**: nothing creates the `grafana_dashboard`
+  ConfigMaps the Grafana sidecar looks for.
 - **Monitoring's `/query` picks its answer by keyword** (alerts, pods or scrape targets);
   it doesn't build PromQL from the question.
 - **Conversation memory is per process.** `k8s/orchestrator.yaml` runs 2 replicas,

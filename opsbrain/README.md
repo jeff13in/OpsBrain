@@ -578,12 +578,15 @@ show stale results.
 ### Grafana dashboards
 
 ```powershell
+Invoke-RestMethod http://localhost:8002/dashboards/opsbrain-service-health
+Invoke-RestMethod http://localhost:8002/dashboards/opsbrain-agent-activity
 Invoke-RestMethod http://localhost:8002/dashboards/opsbrain-overview
 ```
-`opsbrain-overview` is the **verified real UID** — confirmed directly from
-`infra/grafana/dashboards/opsbrain-overview.json` (`"uid": "opsbrain-overview"`).
-That dashboard currently has exactly one panel ("Scrape Target Availability",
-the `up` metric — same caveat as above, most targets will show down).
+Three dashboards are provisioned from `infra/grafana/dashboards/`, and each UID
+matches its file name. *Service Health* (OPU-56) shows availability, throughput,
+5xx rate, latency, CPU, memory and logs per service. *Agent Activity* (OPU-56)
+shows agent outcomes, failures, latency and workflow status. *Monitoring Overview*
+(`opsbrain-overview`) has one panel, "Scrape Target Availability" (the `up` metric).
 
 ```powershell
 $body = @{ datasource_uid = "prometheus"; expr = "up"; from_minutes_ago = 15 } | ConvertTo-Json

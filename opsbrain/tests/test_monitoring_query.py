@@ -40,3 +40,47 @@ def test_scrape_target_aggregation():
     ]}):
         result = agent.get_scrape_targets()
     assert result["total"] == 2 and result["down"] == 1
+
+
+def test_default_alert_answer_keeps_counts_names_and_data():
+    agent = MonitoringAgent()
+    alerts = {
+        "total": 3, "active": 2, "suppressed": 1,
+        "severity_breakdown": {"critical": 2, "warning": 1},
+        "top_alerts": [{"alertname": "HighCPU", "count": 2}],
+    }
+    with patch.object(agent, "summarize_alerts", return_value=alerts):
+        reply = agent.ask("Is anything firing?")
+    assert reply["sources"] == ["alertmanager:alerts"]
+    assert "2 active and 1 suppressed" in reply["answer"]
+    assert "HighCPU (2)" in reply["answer"]
+    assert reply["data"] == alerts
+
+
+def test_pod_answer_names_degraded_pods():
+    agent = MonitoringAgent()
+    pods = {
+        "total_pods": 2, "status_breakdown": {"healthy": 1, "degraded": 1},
+        "pods": [{"pod": "api-1", "status": "healthy"}, {"pod": "worker-1", "status": "degraded"}],
+    }
+    with patch.object(agent, "get_pod_health", return_value=pods):
+        reply = agent.ask("Are any pods restarting?")
+    assert reply["sources"] == ["prometheus:kube_pod_status"]
+    assert "Needing attention: worker-1" in reply["answer"]
+
+
+def test_down_answer_names_scrape_targets():
+    agent = MonitoringAgent()
+    with patch.object(agent, "query_prometheus", return_value={"result": [
+        {"metric": {"job": "prometheus", "instance": "localhost:9090"}, "value": [0, "1"]},
+        {"metric": {"job": "rag-agent", "instance": "rag-agent:8001"}, "value": [0, "0"]},
+    ]}):
+        reply = agent.ask("Which targets are down?")
+    assert reply["data"]["down"] == 1
+    assert "rag-agent (rag-agent:8001)" in reply["answer"]
+
+
+def test_empty_alert_summary_has_no_alerts_answer():
+    agent = MonitoringAgent()
+    with patch.object(agent, "summarize_alerts", return_value={"total": 0}):
+        assert agent.ask("status?")["answer"] == "No alerts in Alertmanager."

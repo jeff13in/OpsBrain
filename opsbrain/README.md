@@ -155,6 +155,20 @@ synthesis models and deadlines do not change. Broker outages are reported as
 unavailable, not silently hidden by HTTP fallback. This local broker is unsecured;
 keep it private and add authentication/TLS before any external deployment.
 
+For an already configured non-production Kubernetes deployment, Kafka can also
+be opted into explicitly (these commands restart the selected deployments):
+
+```powershell
+kubectl -n opsbrain set env deployment/orchestrator deployment/rag-agent deployment/monitoring-agent deployment/infra-agent deployment/code-agent AGENT_TRANSPORT=kafka KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+```
+
+Set `AGENT_TRANSPORT=http` on those deployments to return to HTTP. Use images
+built from this branch so Groq model configuration and metrics are retained;
+do not replace the agent manifests with the older Gemini-based branch versions.
+The bundled dev/staging broker explicitly enables automatic request/reply topic
+creation. Production brokers should use managed topic provisioning and access
+controls instead. No Kubernetes commands are needed for local HTTP usage.
+
 To return to HTTP, ensure `.env` has `AGENT_TRANSPORT=http` (or leave it unset),
 and recreate the agents without the override:
 

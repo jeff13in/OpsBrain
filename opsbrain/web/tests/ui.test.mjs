@@ -63,9 +63,10 @@ test('HTML and CSS include accessible responsive foundation hooks', async () => 
   assert.match(css, /max-width: 700px/); assert.match(css, /max-width: 430px/);
 });
 test('client has no network or credential calls and isolates persistent storage', async () => {
-  for (const name of ['app.js', 'ui.js', 'demo.js', 'chat.js', 'monitoring.js', 'history.js']) {
+  for (const name of ['app.js', 'ui.js', 'demo.js', 'chat.js', 'monitoring.js', 'history.js', 'api.js']) {
     const source = await readFile(new URL(`../public/${name}`, import.meta.url), 'utf8');
-    assert.doesNotMatch(source, /\b(fetch|XMLHttpRequest|WebSocket|sessionStorage)\b/);
+    assert.doesNotMatch(source, /\b(XMLHttpRequest|WebSocket|sessionStorage)\b/);
+    if (name !== 'api.js') assert.doesNotMatch(source, /\bfetch\b/);
     if (name !== 'history.js') assert.doesNotMatch(source, /\blocalStorage\b/);
     assert.doesNotMatch(source, /LLM_API_KEY|GOOGLE_API_KEY|GITHUB_TOKEN|POSTGRES_PASSWORD/);
   }

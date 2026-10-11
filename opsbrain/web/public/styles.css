@@ -54,6 +54,10 @@
   .menu-toggle { display: none !important; }
 }
 @layer components {
+  .connection-controls { padding: 20px 24px; margin-bottom: 28px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+  .connection-controls > div:first-child { flex: 1 1 240px; }
+  .connection-controls p { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .connection-controls > .form-help { flex-basis: 100%; margin: 0; }
   .history-storage-note { padding: 14px 18px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); margin-bottom: 20px; font-size: 12px; }
   .history-list { margin: 0; padding: 0 24px; list-style: none; }
   .history-list li { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 24px 0; }

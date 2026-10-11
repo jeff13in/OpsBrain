@@ -49,45 +49,48 @@ export async function demoReply(scenario) {
 }
 
 export function createChat({ reply = demoReply, onChange = () => {} } = {}) {
-  let state = { turns: [], pending: false, validation: '', draft: '', scenario: 'ok' };
+  let mode = 'demo';
+  const initial = () => ({ turns: [], pending: false, validation: '', draft: '', scenario: 'ok', mode });
+  let state = initial();
   let generation = 0;
   const notify = () => onChange();
   return {
     snapshot: () => freeze(structuredClone(state)),
+    setMode(value) { mode = value === 'live' ? 'live' : 'demo'; this.clear(); },
     clear() {
       generation += 1;
-      state = { turns: [], pending: false, validation: '', draft: '', scenario: 'ok' };
+      state = initial();
       notify();
     },
     restore(turns) {
       generation += 1;
-      state = { turns: structuredClone(turns), pending: false, validation: '', draft: '', scenario: 'ok' };
+      mode = 'demo'; state = { ...initial(), turns: structuredClone(turns) };
       notify();
     },
     async submit(question, scenario = 'ok') {
       if (state.pending) return false;
       state.validation = validateQuestion(question);
       state.draft = typeof question === 'string' ? question : '';
-      if (!Object.hasOwn(CHAT_FIXTURES, scenario)) state.validation = 'Choose a supported demo scenario.';
+      if (mode === 'demo' && !Object.hasOwn(CHAT_FIXTURES, scenario)) state.validation = 'Choose a supported demo scenario.';
       if (state.validation) { notify(); return false; }
       if (state.turns.length >= 20) {
         state.validation = 'This preview holds 20 questions. Clear the demo conversation to continue.';
         notify(); return false;
       }
       state.scenario = scenario;
-      const turn = { question: question.trim(), response: null };
+      const turn = { question: question.trim(), response: null, mode };
       state.turns.push(turn);
       state.draft = '';
       state.pending = true;
       const requestGeneration = generation;
       notify();
       try {
-        const response = await reply(scenario);
+        const response = await reply(scenario, turn.question);
         if (generation !== requestGeneration) return false;
         turn.response = response;
       } catch {
         if (generation !== requestGeneration) return false;
-        turn.response = { status: 'error', answer: 'The demo response could not be prepared. Choose a scenario and try again.', sources: [], results: [] };
+        turn.response = { status: 'error', answer: mode === 'live' ? 'Live request failed or returned an invalid response. No demo fallback was used. Check the connection and try again.' : 'The demo response could not be prepared. Choose a scenario and try again.', sources: [], results: [] };
       }
       state.pending = false;
       notify();

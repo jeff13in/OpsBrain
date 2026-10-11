@@ -1,18 +1,26 @@
+import { createApi } from './api.js';
 import { createHistory, HISTORY_KEY } from './history.js';
 import { createMonitoring } from './monitoring.js';
-import { createChat } from './chat.js';
+import { createChat, demoReply } from './chat.js';
 import { demoStateFromHash } from './demo.js';
 import { landingSectionFromHash, navigation, renderPage, routeFromHash, validateDraft } from './ui.js';
 
 const main = document.querySelector('#main');
 const nav = document.querySelector('#workspace-navigation');
 const toggle = document.querySelector('.menu-toggle');
+let apiMode = 'demo';
+const api = createApi({ onChange() {
+  const mode = api.snapshot().mode;
+  const changed = mode !== apiMode;
+  apiMode = mode;
+  if (changed || routeFromHash(window.location.hash) === 'monitoring') render();
+} });
 const history = createHistory();
 let activeHistoryId = null;
 let restoringHistory = false;
-const chat = createChat({ onChange() {
+const chat = createChat({ reply: (scenario, question) => chat.snapshot().mode === 'live' ? api.ask(question) : demoReply(scenario), onChange() {
   const state = chat.snapshot();
-  if (!state.pending && !state.validation && state.turns.length && !restoringHistory) {
+  if (state.mode !== 'live' && !state.pending && !state.validation && state.turns.length && !restoringHistory) {
     const savedId = history.save(activeHistoryId, state.turns);
     if (!savedId && activeHistoryId) {
       activeHistoryId = null;
@@ -26,7 +34,7 @@ const chat = createChat({ onChange() {
   if (route === 'history') { render(); return; }
   if (route !== 'chat') return;
   render();
-  document.querySelector('#announcement').textContent = state.validation || (state.pending ? 'Preparing a fixed demo answer.' : state.turns.length ? 'Demo answer ready. Sources and per-agent results follow your question.' : 'Demo conversation cleared.');
+  document.querySelector('#announcement').textContent = state.validation || (state.pending ? state.mode === 'live' ? 'Waiting for the live API answer.' : 'Preparing a fixed demo answer.' : state.turns.length ? `${state.mode === 'live' ? 'Live' : 'Demo'} answer ready. Sources and per-agent results follow your question.` : 'Demo conversation cleared.');
   if (state.validation) document.querySelector('#chat-question')?.focus();
   else if (!state.pending && state.turns.length) {
     document.querySelector(`#chat-answer-${state.turns.length - 1}`)?.focus();
@@ -45,8 +53,8 @@ const monitoring = createMonitoring({ onChange() {
 function render(moveFocus = false) {
   const route = routeFromHash(window.location.hash);
   if (activeHistoryId && !history.get(activeHistoryId)) { activeHistoryId = null; chat.clear(); }
-  monitoring.setActive(route === 'monitoring' && !document.hidden);
-  const page = renderPage(route, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState: history.snapshot() });
+  monitoring.setActive(route === 'monitoring' && api.snapshot().mode === 'demo' && !document.hidden);
+  const page = renderPage(route, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState: history.snapshot(), connectionState: api.snapshot() });
   nav.innerHTML = navigation(route);
   // Renderers contain trusted templates; all dynamic text is escaped in ui.js.
   main.innerHTML = page.html;
@@ -57,7 +65,16 @@ function render(moveFocus = false) {
   nav.classList.remove('is-open');
   if (moveFocus) main.focus();
   if (route === 'dashboard' && moveFocus) {
-    document.querySelector('#demo-state')?.focus();
+    document.querySelector('#connect-live')?.addEventListener('click', () => {
+    activeHistoryId = null; monitoring.setActive(false); chat.setMode('live'); void api.connect();
+  });
+  for (const [id, mode] of [['use-demo', 'demo'], ['disconnect-api', 'disconnected']]) {
+    document.getElementById(id)?.addEventListener('click', () => {
+      activeHistoryId = null; monitoring.setActive(false); api.disconnect(mode); chat.setMode(mode === 'demo' ? 'demo' : 'live');
+    });
+  }
+  document.querySelector('#live-monitoring-refresh')?.addEventListener('click', () => { void api.refreshMonitoring(); });
+  document.querySelector('#demo-state')?.focus();
     document.querySelector('#announcement').textContent = `Dashboard preview: ${document.querySelector('#demo-state').selectedOptions[0].textContent}. Backend disconnected.`;
   }
   const section = landingSectionFromHash(window.location.hash);
@@ -85,10 +102,11 @@ function render(moveFocus = false) {
     }
     void chat.submit(form.get('question'), form.get('scenario'));
   });
-  document.querySelector('#clear-chat')?.addEventListener('click', () => { activeHistoryId = null; chat.clear(); });
+  document.querySelector('#clear-chat')?.addEventListener('click', () => { activeHistoryId = null; api.newSession(); chat.clear(); });
   document.querySelectorAll('[data-open-history]').forEach(button => button.addEventListener('click', () => {
     const record = history.get(button.dataset.openHistory);
     if (!record) { render(); document.querySelector('#announcement').textContent = 'This conversation expired or was deleted.'; return; }
+    api.disconnect('demo');
     activeHistoryId = record.id;
     restoringHistory = true;
     chat.restore(record.turns);
@@ -144,7 +162,7 @@ document.addEventListener('keydown', event => {
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) refreshHistory();
-  monitoring.setActive(routeFromHash(window.location.hash) === 'monitoring' && !document.hidden);
+  monitoring.setActive(routeFromHash(window.location.hash) === 'monitoring' && api.snapshot().mode === 'demo' && !document.hidden);
   if (!document.hidden && routeFromHash(window.location.hash) === 'monitoring') render();
 });
 

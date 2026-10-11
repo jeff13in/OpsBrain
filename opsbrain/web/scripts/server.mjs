@@ -5,12 +5,19 @@ import { assets, publicRoot } from './files.mjs';
 
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
 
-export function createPreviewServer(root = publicRoot) {
+export function createPreviewServer(root = publicRoot, { gateway } = {}) {
   return createServer(async (request, response) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader('Cache-Control', 'no-store');
-    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
+    response.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src ${gateway ? "'self'" : "'none'"}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`);
+    let url;
+    try { url = new URL(request.url, 'http://127.0.0.1'); } catch { response.writeHead(400); response.end('Invalid URL'); return; }
+    if (url.pathname.startsWith('/api/')) {
+      if (gateway) await gateway(request, response, url);
+      else { response.writeHead(503, { 'Content-Type': 'application/json' }); response.end('{"error":"Local API gateway disabled"}'); }
+      return;
+    }
     if (!['GET', 'HEAD'].includes(request.method)) {
       response.writeHead(405, { Allow: 'GET, HEAD' });
       response.end('Read-only preview');

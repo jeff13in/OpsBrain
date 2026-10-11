@@ -6,7 +6,7 @@ const text = (value, max) => typeof value === 'string' && value.length <= max;
 
 function validTurn(turn) {
   const reply = turn?.response;
-  return text(turn?.question, 2000) && turn.question.trim().length >= 5 &&
+  return (!turn?.mode || turn.mode === 'demo') && text(turn?.question, 2000) && turn.question.trim().length >= 5 &&
     reply && ['ok', 'partial', 'error'].includes(reply.status) && text(reply.answer, 20000) &&
     Array.isArray(reply.sources) && reply.sources.length <= 20 && reply.sources.every(source => text(source, 2000)) &&
     Array.isArray(reply.results) && reply.results.length <= 4 && reply.results.every(result =>
@@ -54,12 +54,14 @@ export function createHistory({ storage = () => window.localStorage, now = Date.
         const value = storage().getItem(HISTORY_KEY);
         if (value !== null) {
           let parsed;
+          let repaired = false;
           try {
             if (value.length > MAX_BYTES) throw new Error('History too large');
             parsed = JSON.parse(value);
             if (parsed?.version !== 1 || !Array.isArray(parsed.records) || parsed.records.length > MAX_RECORDS) throw new Error('Invalid history');
           } catch {
             parsed = { records: [] };
+            repaired = true;
             warning = 'Invalid saved history was discarded. You can start a new demo conversation.';
           }
           const seen = new Set();
@@ -68,8 +70,8 @@ export function createHistory({ storage = () => window.localStorage, now = Date.
             seen.add(record.id);
             return true;
           });
-          if (records.length !== parsed.records.length) warning = 'Invalid saved conversations were discarded.';
-          if (warning) write();
+          if (records.length !== parsed.records.length) { warning = 'Invalid saved conversations were discarded.'; repaired = true; }
+          if (repaired) write();
         } else records = [];
       } catch { unavailable(); }
     }

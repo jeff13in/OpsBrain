@@ -1,8 +1,9 @@
-# OpsBrain website preview (OPU-84 / OPU-85 / OPU-86 / OPU-87 / OPU-88 / OPU-89)
+# OpsBrain website preview (OPU-84 / OPU-85 / OPU-86 / OPU-87 / OPU-88 / OPU-89 / OPU-90)
 
 Local-only, two-engineer UI foundation on `joint`. The existing Python API,
 Groq/Gemini configuration, Compose and transports are untouched. This is **not**
-a deployed, authenticated website or a live chat/monitoring dashboard.
+a deployed or authenticated website. Demo mode works without a backend; live
+chat and monitoring snapshots require the configured localhost API gateway.
 
 ## Run locally
 
@@ -61,16 +62,17 @@ Continue to use localhost until OPU-91 verifies actual website/API protection.
 
 ## Safety and limits
 
-The build copies exactly nine public assets, not the backend/environment tree.
+The build copies exactly ten public assets, not the backend/environment tree.
 Unknown existing build outputs cause a failure instead of deleting user files.
 Never put provider keys, database credentials, access tokens or private
 operational fixtures in `public/`. Environment/config copying is not supported.
 Future frontend configuration must contain only public endpoint settings.
 Chat questions, answers and sources render as escaped plain text. Markdown and
 HTML are not interpreted; numbered citations focus local source entries.
-The development CSP blocks network connections (`connect-src 'none'`). A future
-API adapter must explicitly scope allowed secure endpoints; CORS does not replace
-backend authentication. Dev-server security headers are not automatically
+The default development CSP blocks network connections (`connect-src 'none'`).
+The optional localhost gateway permits same-origin requests (`connect-src 'self'`)
+to four allowlisted routes. CORS and localhost checks do not replace backend
+authentication. Dev-server security headers are not automatically
 transferred to a static host: OPU-91 must configure and verify host protections.
 
 Node tests check markup/hooks and HTTP behavior, not actual browser rendering,
@@ -95,8 +97,7 @@ successful sample metrics. Error offers a **Reset demo preview** link, which
 selects the populated fixture without retrying a network request.
 
 The selector has a visible label, retains focus after state changes, and announces
-the new state. Cards and signal grids adapt to narrow screens. History and live integration
-remain later tickets. Real browser visual
+the new state. Cards and signal grids adapt to narrow screens. History and optional live queries are described below. Real browser visual
 and keyboard QA is still required before acceptance.
 
 ## Demo chat (OPU-87)
@@ -122,9 +123,9 @@ Up to 20 turns belong to each conversation. Completed turns save automatically
 in this browser. **New conversation** resets the active chat while retaining its
 saved history. Reopen or delete saved conversations from History. Unsubmitted
 drafts may be discarded when navigating away. No backend session is implemented;
-live integration belongs to OPU-90.
+live integration is available through the optional gateway described below.
 
-OPU-86 through OPU-89 are implemented and automated checks pass; they are **ready
+OPU-86 through OPU-90 are implemented and automated checks pass; they are **ready
 for review**, with actual browser desktop/mobile, keyboard and visual QA pending.
 This file records local delivery status; it does not update an external tracker.
 
@@ -156,7 +157,8 @@ error state. A preparation failure clears previous samples and stops automatic
 refresh instead of substituting successful demo data.
 
 Actual browser desktop/mobile, visual, keyboard and screen-reader review remain
-pending. Live monitoring queries and response validation belong to OPU-90.
+pending. Live alert/pod snapshots are available in live mode; CPU/memory/latency charts
+remain demo-only.
 
 ## Browser-local history (OPU-89)
 
@@ -185,8 +187,68 @@ owned storage key before changing it; storage events update other open tabs.
 Simultaneous writes across tabs remain best effort because browser storage has
 no transactional merge. No unrelated storage keys are touched.
 
-## Next tickets (in agreed order)
+## Local live API adapter (OPU-90)
 
-1. OPU-90: read-only API adapter and deliberate demo/live transitions.
-2. OPU-91: free hosted preview, two-email access controls, frontend CI,
+Demo remains the default. To enable the localhost gateway on macOS/Linux, run
+from `opsbrain/web/`:
+
+```bash
+OPSBRAIN_WEB_API=1 npm run dev
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:OPSBRAIN_WEB_API = '1'
+npm.cmd run dev
+```
+
+Use `http://127.0.0.1:4173/` (the gateway requires this literal loopback host).
+The server-side defaults are `http://127.0.0.1:8000` for Orchestrator and
+`http://127.0.0.1:8002` for Monitoring, matching Compose's host ports.
+`OPSBRAIN_WEB_ORCHESTRATOR` and `OPSBRAIN_WEB_MONITORING` can select other literal
+`http://127.0.0.1:port` origins. These settings are never bundled into client
+assets. The gateway is disabled without `OPSBRAIN_WEB_API=1`.
+
+Starting the preview does not start backend containers, read `.env` or send an
+API request. **Connect live** checks Orchestrator health. Only then can **Ask live
+API** submit a question. New conversation rotates the page-memory backend
+session. **Disconnect** cancels active requests and clears page state; **Use demo**
+is a deliberate transition, never an automatic failure fallback. Switching modes
+starts a new chat and stops demo auto-refresh. Reopening demo History explicitly
+returns to demo mode. Live conversations remain in page memory and cannot be
+saved as demo history.
+
+Gateway allowlist:
+
+| Browser route | Upstream route | Method |
+| --- | --- | --- |
+| `/api/orchestrator/health` | `/health` | GET |
+| `/api/orchestrator/ask` | `/ask` | POST (question query only) |
+| `/api/monitoring/alerts/summary` | `/alerts/summary` | GET |
+| `/api/monitoring/pods/health` | `/pods/health` | GET |
+
+Unknown routes/methods, arbitrary upstream URLs, query parameters, cross-origin
+requests and extra question fields are rejected. Cookies and authorization
+headers are not forwarded. Requests have deadlines and size limits, redirects
+are rejected, backend error prose is replaced with safe gateway messages, and
+API response schemas are validated before rendering. Partial and all-failed
+`AskResponse` results remain visible, including structured HTTP 502 responses.
+Live reply text and sources remain escaped plain text. Health reachability does
+not claim agent readiness or operational health.
+
+Live Monitoring has manual **Refresh live snapshots** for alerts and pod-phase
+counts. Failed snapshots remain unavailable alongside successful ones; no demo
+chart is substituted. These are API retrievals, and the backend may itself use
+demo exporters. CPU, memory and latency charts remain synthetic in Demo mode.
+The static build contains the browser adapter, not this Node development gateway.
+Hosted use requires a separately protected same-origin gateway/API and host CSP,
+which belong to OPU-91; no production authentication is implemented here.
+
+Automated local HTTP integration uses a contract-compatible test backend. Actual
+backend/model connectivity and browser visual/keyboard QA remain to be verified.
+
+## Next ticket
+
+1. OPU-91: free hosted preview, two-email access controls, frontend CI,
    connected-API protection and end-to-end verification.

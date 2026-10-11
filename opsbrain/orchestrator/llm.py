@@ -6,6 +6,7 @@ graph falls back to the deterministic rules in router.py / contract.py.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -22,6 +23,12 @@ except ImportError:  # pragma: no cover - orchestrator still works on keyword ro
     HumanMessage = SystemMessage = ChatGoogleGenerativeAI = None
 
 logger = logging.getLogger(__name__)
+
+# Hard limits on each Gemini call. Past them, routing falls back to keywords and
+# synthesis to fallback_answer(). Without them a rate-limited key (the free tier
+# allows 5 requests/min) makes the client retry 429s for over a minute (OPU-51).
+ROUTE_TIMEOUT_S = float(os.getenv("ORCHESTRATOR_ROUTE_TIMEOUT_SECONDS", "10"))
+SYNTH_TIMEOUT_S = float(os.getenv("ORCHESTRATOR_SYNTH_TIMEOUT_SECONDS", "20"))
 
 ROUTER_PROMPT = """You route DevOps questions to specialist agents.
 
@@ -49,6 +56,7 @@ def get_llm() -> Any | None:
         model=os.getenv("GOOGLE_CHAT_MODEL", "gemini-3.6-flash"),
         temperature=0,
         max_output_tokens=4096,
+        max_retries=1,  # the per-call timeouts below are the real bound
     )
 
 
@@ -76,7 +84,10 @@ async def classify(llm: Any, question: str, history: list[dict[str, str]]) -> tu
     prompt = f"Conversation so far:\n{_format_history(history)}\n\n" if history else ""
     prompt += f"Latest question:\n{question}"
     try:
-        reply = await llm.ainvoke([SystemMessage(content=ROUTER_PROMPT.format(agents=agents)), HumanMessage(content=prompt)])
+        reply = await asyncio.wait_for(
+            llm.ainvoke([SystemMessage(content=ROUTER_PROMPT.format(agents=agents)), HumanMessage(content=prompt)]),
+            timeout=ROUTE_TIMEOUT_S,
+        )
         parsed = _parse_json(_text(reply))
         names = [a for a in AGENT_REGISTRY if a in parsed.get("agents", [])]  # registry order, unknown names dropped
         decision = RoutingDecision(agents=names, method="llm", reason=str(parsed.get("reason", ""))[:300])
@@ -96,10 +107,13 @@ async def synthesise(llm: Any, question: str, results: list[AgentResult]) -> str
         else:
             sections.append(f"[{r.agent}] UNAVAILABLE ({r.error.code if r.error else r.status})")
     try:
-        reply = await llm.ainvoke([
-            SystemMessage(content=SYNTH_PROMPT),
-            HumanMessage(content=f"Question:\n{question}\n\nAgent answers:\n\n" + "\n\n".join(sections)),
-        ])
+        reply = await asyncio.wait_for(
+            llm.ainvoke([
+                SystemMessage(content=SYNTH_PROMPT),
+                HumanMessage(content=f"Question:\n{question}\n\nAgent answers:\n\n" + "\n\n".join(sections)),
+            ]),
+            timeout=SYNTH_TIMEOUT_S,
+        )
         return _text(reply) or None
     except Exception as exc:  # noqa: BLE001 - any LLM failure means "use fallback_answer"
         logger.warning("LLM synthesis failed, using fallback answer: %s", exc.__class__.__name__)

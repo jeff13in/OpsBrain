@@ -33,8 +33,10 @@ POST /ask  AskRequest{question, session_id?}
 - Agents are returned in registry order: `rag, monitoring, infra, code`.
 - Keyword match is whole-word (`pr` doesn't match `prometheus`).
 - With `GOOGLE_API_KEY` set, a Gemini classifier routes (`method="llm"`) and rewrites
-  follow-ups using the session history. Any LLM failure, unparseable reply, or empty/unknown
-  agent list falls back to keyword routing. Without a key, routing is always by keyword.
+  follow-ups using the session history. Any LLM failure, unparseable reply, empty/unknown
+  agent list, or no reply within 10s (`ORCHESTRATOR_ROUTE_TIMEOUT_SECONDS`) falls back to
+  keyword routing. Synthesis likewise gives up after 20s (`ORCHESTRATOR_SYNTH_TIMEOUT_SECONDS`).
+  Without a key, routing is always by keyword.
 - Each agent has a URL (overridable via `<NAME>_AGENT_URL`) and timeout in `AGENT_REGISTRY`
   (RAG 60s, others 30s).
 
@@ -109,8 +111,9 @@ recently used are evicted). Failed (`error`) turns aren't remembered.
 ## Known gaps in the agents (to fix before OPU-44 / OPU-50)
 
 1. ~~**Monitoring has no `/query` endpoint.**~~ Added in OPU-50: alerts by default, pod health
-   for pod/crash/restart questions, scrape targets for down/target questions; 503 when a backend
-   can't be queried. Keyword dispatch only — Rifat may want to refine it.
+   for pod/crash/restart questions, scrape targets for down/target questions — every topic the
+   question mentions, `data` keyed by topic (OPU-51). 503 only when every backend asked fails.
+   Keyword dispatch only — Rifat may want to refine it.
 2. ~~**Infra and Code `ask()` return errors as 200s.**~~ Fixed in OPU-62. `/query` now returns
    503 when the backend is down, slow or throttled, 404/400 for things that don't exist or bad
    input, and 500 when credentials, permissions or config are missing. Backend calls are bounded

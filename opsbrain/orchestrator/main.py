@@ -18,10 +18,11 @@ from fastapi.responses import JSONResponse
 from orchestrator.graph import build_orchestrator_graph
 from orchestrator.llm import get_llm
 from orchestrator.memory import SessionMemory
-from shared.agent_bus import KafkaAgentBus, kafka_enabled
+from shared.agent_bus import KafkaAgentBus, configure_logging, kafka_enabled
 from shared.models import AskRequest, AskResponse
 
 logger = logging.getLogger(__name__)
+configure_logging("orchestrator", "shared")
 
 
 @lru_cache(maxsize=1)

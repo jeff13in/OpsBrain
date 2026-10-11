@@ -52,6 +52,24 @@ def bootstrap_servers() -> str:
     return os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 
 
+def configure_logging(*names: str) -> None:
+    """Show INFO logs from our own modules in the container logs.
+
+    uvicorn only configures its own loggers, so without this the root logger's
+    WARNING default hides lines like "listening on …" or "skipping request …".
+    Only the named loggers are touched, so kafka-python stays quiet.
+    """
+    for name in names:
+        log = logging.getLogger(name)
+        if log.handlers:
+            continue
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s - %(message)s"))
+        log.addHandler(handler)
+        log.setLevel(logging.INFO)
+        log.propagate = False
+
+
 class AgentBusUnavailable(Exception):
     """Kafka couldn't take the request (broker down, not connected yet). Retryable."""
 
@@ -214,6 +232,7 @@ def attach_kafka_worker(app: Any, agent: str, query_path: str = "/query") -> Age
     """
     if not kafka_enabled():
         return None
+    configure_logging("shared")
     worker = AgentWorker(app, agent, query_path=query_path)
     inner = app.router.lifespan_context
 
@@ -271,6 +290,7 @@ class KafkaAgentBus:
         consumer = _connect(lambda: self._consumer_factory(self.reply_topic, self.group_id, "latest"), self._stop, "consumer")
         if self._producer is None or consumer is None:
             return
+        logger.info("Orchestrator listening for agent replies on %s (group %s)", self.reply_topic, self.group_id)
         try:
             consumer.listen(self._on_reply, stop=self._stop, on_ready=self._ready.set)
         except Exception:

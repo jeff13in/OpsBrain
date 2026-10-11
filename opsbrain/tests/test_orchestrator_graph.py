@@ -10,10 +10,12 @@ import asyncio
 import json
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import httpx
 from fastapi.testclient import TestClient
 
+from orchestrator import llm as llm_ops
 from orchestrator import main
 from orchestrator.graph import build_orchestrator_graph
 from orchestrator.memory import SessionMemory
@@ -151,6 +153,19 @@ class LLMTests(unittest.TestCase):
             graph = build_orchestrator_graph(llm=FakeLLM(reply), transport=agent_transport({"monitoring": ok("a", [])}))
             out = run(graph, "Any alerts firing?")
             self.assertEqual(out["routing"].method, "keyword", reply)
+
+    def test_slow_llm_falls_back_instead_of_stalling(self) -> None:
+        # A rate-limited Gemini key retries 429s for a minute+; /ask must not wait on it (OPU-51).
+        class SlowLLM(FakeLLM):
+            async def ainvoke(self, messages):
+                await asyncio.sleep(5)
+
+        graph = build_orchestrator_graph(llm=SlowLLM(""), transport=agent_transport({"rag": ok("A", []), "monitoring": ok("B", [])}))
+        with patch.object(llm_ops, "ROUTE_TIMEOUT_S", 0.05), patch.object(llm_ops, "SYNTH_TIMEOUT_S", 0.05):
+            out = run(graph, "Any alerts firing? check the runbook")
+
+        self.assertEqual(out["routing"].method, "keyword")
+        self.assertEqual(out["final_answer"], "[rag] A\n\n[monitoring] B")
 
     def test_synthesis_failure_uses_fallback_answer(self) -> None:
         class FailingSynth(FakeLLM):

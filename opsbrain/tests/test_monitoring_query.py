@@ -36,7 +36,7 @@ class AskTests(unittest.TestCase):
         self.assertEqual(reply["sources"], ["alertmanager:alerts"])
         self.assertIn("2 active and 1 suppressed", reply["answer"])
         self.assertIn("HighCPU (2)", reply["answer"])
-        self.assertEqual(reply["data"], ALERTS)
+        self.assertEqual(reply["data"], {"alerts": ALERTS})
 
     def test_pod_questions_use_pod_health(self) -> None:
         with patch.object(self.agent, "get_pod_health", return_value=PODS):
@@ -49,8 +49,31 @@ class AskTests(unittest.TestCase):
         with patch.object(self.agent, "query_prometheus", return_value=UP):
             reply = self.agent.ask("Which targets are down?")
 
-        self.assertEqual(reply["data"]["down"], 1)
+        self.assertEqual(reply["data"]["targets"]["down"], 1)
         self.assertIn("rag-agent (rag-agent:8001)", reply["answer"])
+
+    def test_answers_every_topic_the_question_mentions(self) -> None:
+        with patch.object(self.agent, "summarize_alerts", return_value=ALERTS), \
+             patch.object(self.agent, "get_pod_health", return_value=PODS):
+            reply = self.agent.ask("Which alerts are firing, and are any pods crashlooping?")
+
+        self.assertEqual(reply["sources"], ["alertmanager:alerts", "prometheus:kube_pod_status"])
+        self.assertIn("2 active", reply["answer"])
+        self.assertIn("worker-1", reply["answer"])
+        self.assertEqual(set(reply["data"]), {"alerts", "pods"})
+
+    def test_one_backend_down_is_reported_in_the_answer(self) -> None:
+        with patch.object(self.agent, "summarize_alerts", return_value=ALERTS), \
+             patch.object(self.agent, "get_pod_health", side_effect=MonitoringClientError("Prometheus unreachable")):
+            reply = self.agent.ask("alerts and pods?")
+
+        self.assertEqual(reply["sources"], ["alertmanager:alerts"])
+        self.assertIn("Couldn't check pods: Prometheus unreachable", reply["answer"])
+
+    def test_every_backend_down_raises(self) -> None:
+        with patch.object(self.agent, "get_pod_health", side_effect=MonitoringClientError("Prometheus unreachable")), \
+             self.assertRaises(MonitoringClientError):
+            self.agent.ask("any pods restarting?")
 
     def test_no_alerts(self) -> None:
         empty = {**ALERTS, "total": 0, "active": 0, "suppressed": 0, "severity_breakdown": {}, "top_alerts": []}

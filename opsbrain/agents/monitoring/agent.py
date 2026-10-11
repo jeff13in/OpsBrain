@@ -284,19 +284,33 @@ class MonitoringAgent:
     def ask(self, question: str) -> dict[str, Any]:
         """Best-effort natural-language entry point used by the orchestrator's /query contract (OPU-50).
 
-        Picks one backend query by keyword; alerts are the default because they're the
-        broadest health signal. MonitoringClientError propagates so /query returns 503
-        instead of an error message dressed up as an answer.
+        Answers every topic the question mentions — alerts, pod health, scrape targets —
+        with alerts as the default because they're the broadest health signal. `data` is
+        keyed by topic. If some backends fail, the answer says which; if all fail,
+        MonitoringClientError propagates so /query returns 503 instead of an error
+        message dressed up as an answer.
         """
         q = question.lower()
-        if any(word in q for word in ("pod", "crash", "restart")):
-            data = self.get_pod_health()
-            return {"answer": self._format_pod_health(data), "sources": ["prometheus:kube_pod_status"], "data": data}
-        if any(word in q for word in ("target", "scrape", "down")):
-            data = self.get_scrape_targets()
-            return {"answer": self._format_targets(data), "sources": ["prometheus:up"], "data": data}
-        data = self.summarize_alerts()
-        return {"answer": self._format_alerts(data), "sources": ["alertmanager:alerts"], "data": data}
+        topics = [
+            ("alerts", ("alert", "firing", "incident"), self.summarize_alerts, self._format_alerts, "alertmanager:alerts"),
+            ("pods", ("pod", "crash", "restart"), self.get_pod_health, self._format_pod_health, "prometheus:kube_pod_status"),
+            ("targets", ("target", "scrape", "down"), self.get_scrape_targets, self._format_targets, "prometheus:up"),
+        ]
+        wanted = [t for t in topics if any(word in q for word in t[1])] or topics[:1]
+
+        answers, sources, data, failures = [], [], {}, []
+        for name, _, fetch, fmt, source in wanted:
+            try:
+                data[name] = fetch()
+            except MonitoringClientError as exc:
+                failures.append((name, exc))
+                continue
+            answers.append(fmt(data[name]))
+            sources.append(source)
+        if not answers:
+            raise failures[0][1]
+        answers += [f"Couldn't check {name}: {exc}" for name, exc in failures]
+        return {"answer": " ".join(answers), "sources": sources, "data": data}
 
     @staticmethod
     def _format_alerts(data: dict[str, Any]) -> str:

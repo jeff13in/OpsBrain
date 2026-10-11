@@ -14,7 +14,7 @@ and the orchestrator/agent contract is [`opsbrain/orchestrator/CONTRACT.md`](ops
 | Branch | What it is |
 |---|---|
 | `jeffin-dev` | **Active development branch.** CI runs on every push |
-| `ejffinsam14/opu-50-…` | OPU-50: agents and orchestrator talk over Kafka. Everything below describes this branch; it goes into `jeffin-dev` by PR |
+| `ejffinsam14/opu-51-…` | OPU-51: live run of the full pipeline plus the fixes it found. Everything below describes this branch; it goes into `jeffin-dev` by PR |
 | `rifat-updated` | Was used to merge Rifat's branch in (PR #2). Same as `jeffin-dev` as of `9e21ad0` |
 | `main` | Stable branch, last updated from `jeffin-dev` via PR #1 (Sept 8), plus a title rename on Oct 2. Behind `jeffin-dev` |
 | `Rifat` | Rifat's original work in the old root layout (`rag/`, `monitoring/`, `data/`). Fully merged into `jeffin-dev` (PR #2), so start new work from `jeffin-dev` instead |
@@ -50,12 +50,12 @@ User (curl / CLI / Slack later)
 
 | Component | Status | What it does |
 |---|---|---|
-| **Orchestrator** | ✅ Built (OPU-42/43/50), not yet run against live agents | Routes each question to one or more agents, calls them in parallel over Kafka, merges the answers, remembers the conversation per `session_id` |
+| **Orchestrator** | ✅ Working, run live over Kafka (OPU-42/43/50/51) | Routes each question to one or more agents, calls them in parallel over Kafka, merges the answers, remembers the conversation per `session_id` |
 | **RAG Agent** | ✅ Working | Searches runbooks in pgvector and answers with Gemini, citing sources |
-| **Monitoring Agent** | ✅ Working (`/query` added in OPU-50) | Prometheus queries, Grafana dashboards, Alertmanager alerts, pod health, scrape-target status |
+| **Monitoring Agent** | ✅ Working (`/query` added in OPU-50) | Prometheus queries, Grafana dashboards, Alertmanager alerts, pod health, scrape-target status; `/query` answers every topic a question mentions |
 | **Infra Agent** | ✅ Working (OPU-48, OPU-62) | EC2/EKS/RDS state, Kubernetes pods/nodes/deployments/resource usage, Terraform plan, combined health summary |
 | **Code Agent** | ✅ Working (OPU-49, OPU-62) | PRs and their CI status, commits, workflow runs, deployments; can rerun/trigger workflows via explicit endpoints only |
-| **Kafka** | ✅ Wired in (OPU-47, OPU-50) · ⚠️ unit-tested only | Carries every orchestrator → agent request and reply. Tested with an in-memory broker; the live run on the real broker is OPU-51 |
+| **Kafka** | ✅ Wired in and run live (OPU-47/50/51) | Carries every orchestrator → agent request and reply. Live results: [`opsbrain/validation/OPU-51.md`](opsbrain/validation/OPU-51.md) |
 | **CI/CD** | ✅ Lint + tests + image builds to GHCR | Tests now fail the build when they fail. AWS deploy stage is not live |
 
 ---
@@ -64,7 +64,8 @@ User (curl / CLI / Slack later)
 
 1. **Route.** With `GOOGLE_API_KEY` set, Gemini picks the agents and rewrites
    follow-ups so they stand alone ("did it break them?" → "Did PR #42 break the
-   api pods?"). Without a key, or if Gemini fails, whole-word keyword matching
+   api pods?"). Without a key, or if Gemini fails or takes over 10s (e.g. the free
+   tier's 5 requests/min limit), whole-word keyword matching
    picks agents (e.g. *alert, prometheus* → monitoring; *pod, eks, rds* → infra;
    *pr, commit, pipeline* → code). Nothing matched → RAG.
 2. **Call agents in parallel.** Each agent gets `{question, request_id}` with its
@@ -191,7 +192,7 @@ the agent returns an extractive fallback when generated citations don't check ou
 ### Monitoring Agent (:8002)
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/query` | Orchestrator entry point: alert summary by default, pod health for pod/crash/restart questions, scrape targets for "down"/target questions; 503 if a backend is unreachable |
+| `POST` | `/query` | Orchestrator entry point: answers every topic mentioned (alerts by default, pod health for pod/crash/restart, scrape targets for "down"/target); 503 only if every backend asked is unreachable |
 | `POST` | `/metrics/query` | Instant or range PromQL (`query`, optional `start`/`end`/`step`) |
 | `GET` | `/dashboards/{uid}` | Grafana dashboard metadata and panels |
 | `POST` | `/dashboards/panel-query` | Query a Grafana datasource with PromQL |
@@ -256,7 +257,7 @@ OpsBrain/                      ← git repo root (github.com/jeff13in/OpsBrain)
     ├── k8s/                  Kubernetes manifests; not deployed yet
     ├── tests/                unit + integration tests (run offline)
     ├── scripts/validate_rag.py   live RAG check against Postgres + Gemini
-    ├── validation/OPU-40.md  Week 1 RAG validation record
+    ├── validation/           OPU-40 (RAG) and OPU-51 (full Kafka pipeline) validation records
     └── docker-compose.yml
 ```
 
@@ -273,7 +274,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/ruff check agents/ orchestrator/ shared/
 ```
 CI runs the same two commands on every push to `main` or `jeffin-dev` (and on PRs
-into `main`), and a failing test fails the build. Current count: 85 passed, 1 skipped
+into `main`), and a failing test fails the build. Current count: 89 passed, 1 skipped
 (`test_database.py` needs `RAG_TEST_DATABASE_URL`).
 
 ### Live RAG check
@@ -293,9 +294,11 @@ Put a `.md` or `.txt` file in `opsbrain/docs/` and run the ingest command again.
 
 ## Known gaps
 
-- **Kafka messaging is unit-tested only.** It hasn't run on the real broker in Docker yet;
-  the full live pipeline run is OPU-51.
-- **The orchestrator hasn't been run against live agents or a real Gemini key yet.**
+- **Infra and Code haven't run against real AWS, Kubernetes or GitHub yet**; the OPU-51
+  live run had no credentials, so they only exercised the "not configured" error path.
+- **Questions under 5 characters fail** ("hi" → RAG's 422 → HTTP 502); see `CONTRACT.md` gap 3.
+- **The Gemini free tier allows 5 requests/min**, and each `/ask` uses 1–2, so under load most
+  requests route by keyword.
 - **Monitoring's `/query` picks its answer by keyword** (alerts, pods or scrape targets);
   it doesn't build PromQL from the question.
 - **Conversation memory is per process.** `k8s/orchestrator.yaml` runs 2 replicas,
@@ -306,6 +309,6 @@ Put a `.md` or `.txt` file in `opsbrain/docs/` and run the ingest command again.
 ## Roadmap
 
 - [x] **Stage 1:** RAG agent (runbook search, Q&A via Gemini)
-- [~] **Stage 2:** Orchestrator ✅, all four agents ✅, Kafka fan-out ✅ (OPU-50); live pipeline run still to do (OPU-51)
+- [x] **Stage 2:** Orchestrator, all four agents, Kafka fan-out (OPU-50), live pipeline run (OPU-51)
 - [ ] **Stage 3:** Terraform deploy to AWS EKS, ArgoCD GitOps
 - [ ] **Stage 4:** Prometheus/Grafana dashboards for the agents, Slack integration, CLI tool

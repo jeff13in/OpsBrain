@@ -911,7 +911,7 @@ full rules — routing, error codes, retries, aggregation — are in
 [`orchestrator/CONTRACT.md`](orchestrator/CONTRACT.md). In short:
 
 - **Routing**: a Gemini classifier when `GOOGLE_API_KEY` is set, whole-word
-  keyword matching otherwise; nothing matched → RAG.
+  keyword matching otherwise or if Gemini fails or takes over 10s; nothing matched → RAG.
 - **Status**: `ok` (every routed agent answered), `partial` (some did — the
   answer ends with an `Unavailable: <agent> (<code>)` line), `error` (none
   did, HTTP `502`). `results[]` shows each agent's own outcome and latency.
@@ -940,12 +940,15 @@ Orchestrator ── KafkaAgentRequest ──▶ opsbrain.agent.<agent>.requests 
 - Without `AGENT_TRANSPORT=kafka` (e.g. running services outside Compose),
   the Orchestrator falls back to HTTP via `<NAME>_AGENT_URL`.
 
-**Verified so far:** unit tests with an in-memory broker
-(`tests/test_agent_bus.py`) cover the full request → agent → reply path,
-retries, timeouts, and broker failures, plus a smoke test of the worker
-against the real Monitoring and Infra apps. **A live run of the whole stack
-on the real `kafka` container is OPU-51** — until then, treat the Compose
-wiring as untested end-to-end.
+**Verified live (OPU-51):** the whole Compose stack ran on the real `kafka`
+container. One question was routed to all four agents, a stopped agent timed
+out at 30s, a restarted agent skipped the request it had missed, and 8
+concurrent `/ask`s were all answered correctly. The full record, and the three defects it found and fixed,
+is in [`validation/OPU-51.md`](validation/OPU-51.md). Infra and Code ran
+without AWS/GitHub credentials, so only their error path was exercised.
+
+Each service logs its Kafka activity (`shared.agent_bus - … listening on …`,
+`Skipping request …`), so `docker compose logs <service>` shows what it did.
 
 ### Calling agents directly
 

@@ -14,6 +14,10 @@ test('build copies only allowlisted static assets, with source modules intact', 
     assert.deepEqual(await build(output), assets);
     assert.deepEqual((await readdir(output)).sort(), [...assets].sort());
     assert.match(await readFile(join(output, 'app.js'), 'utf8'), /from '.\/ui.js'/);
+    const entry = await readFile(join(output, 'index.html'), 'utf8');
+    assert.match(entry, /http-equiv="Content-Security-Policy"/);
+    assert.match(entry, /default-src 'self'.*connect-src 'self'.*object-src 'none'/);
+    assert.match(entry, /name="referrer" content="no-referrer"/);
     await build(output); // A repeat build is safe and deterministic.
     await rename(join(output, 'mark.svg'), join(output, 'unrelated.svg'));
     await assert.rejects(() => build(output), /Unexpected output files/);

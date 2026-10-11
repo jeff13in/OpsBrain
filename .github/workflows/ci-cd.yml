@@ -22,10 +22,10 @@ name: CI/CD
 
 on:
   push:
-    branches: [main, jeffin-dev]
+    branches: [main, jeffin-dev, joint]
     paths: ["opsbrain/**", ".github/workflows/ci-cd.yml"]
   pull_request:
-    branches: [main]
+    branches: [main, joint]
     paths: ["opsbrain/**", ".github/workflows/ci-cd.yml"]
 
 env:
@@ -36,6 +36,32 @@ defaults:
     working-directory: opsbrain
 
 jobs:
+  # ── Frontend gate ────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend Test & Build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: opsbrain/web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Check frontend JavaScript
+        run: npm run check
+
+      - name: Build allowlisted static assets
+        run: npm run build
+
   # ── Stage 1: Test ─────────────────────────────────────────────────────────
   test:
     name: Lint & Test

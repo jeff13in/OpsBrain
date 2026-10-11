@@ -31,13 +31,14 @@ test('illustration is explicitly not an executed query or live status', () => {
   assert.ok(!html.includes('All systems operational'));
 });
 
-test('landing states audience, missing access protection and current limits', () => {
+test('landing states its restricted audience and current limits', () => {
   const { html } = renderPage('home');
   assert.match(html, /BUILT FOR TWO/);
-  assert.match(html, /Not deployed or access-protected yet/);
+  assert.match(html, /Private-review build/);
+  assert.match(html, /Not a production service/);
   assert.match(html, /Not a public production service/);
-  assert.match(html, /two approved email identities/);
-  assert.match(html, /independently protect any connected API/);
+  assert.match(html, /two approved identities/);
+  assert.match(html, /connected API requires its own protection/);
   assert.match(html, /Labelled dashboard states, demo chat and monitoring charts are available/);
   assert.ok(!/<form|<input|<button/.test(html), 'No signup, payment or fake application action');
 });

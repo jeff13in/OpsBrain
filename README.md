@@ -13,7 +13,10 @@ Cycle 3 handoff: [async architecture](opsbrain/architecture/async-integration.md
 and [OPU-52 review / Week 4 limitations](opsbrain/validation/OPU-52.md).
 
 Website foundation: [local two-engineer UI and frontend commands](opsbrain/web/README.md).
-This is a local-only foundation; hosted preview/access protection is OPU-91.
+An owner-only static preview is deployed while OPU-91 completes two-person
+access, protected API hosting and browser acceptance.
+See the [reviewed website sprint plan](opsbrain/validation/website-sprint-plan.md)
+for OPU-84–91 status and the proposed OPU-92–94 follow-ups.
 
 ### Branches
 

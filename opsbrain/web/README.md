@@ -1,9 +1,17 @@
-# OpsBrain website preview (OPU-84 / OPU-85 / OPU-86 / OPU-87 / OPU-88 / OPU-89 / OPU-90)
+# OpsBrain website preview (OPU-84 through OPU-91)
 
-Local-only, two-engineer UI foundation on `joint`. The existing Python API,
-Groq/Gemini configuration, Compose and transports are untouched. This is **not**
-a deployed or authenticated website. Demo mode works without a backend; live
-chat and monitoring snapshots require the configured localhost API gateway.
+Two-engineer UI foundation on `joint`. The existing Python API, Groq/Gemini
+configuration, Compose and transports are untouched. Demo mode works without a
+backend; live chat and monitoring snapshots require the configured localhost API
+gateway.
+
+## Private hosted preview
+
+The current static preview is deployed at
+<https://opsbrain-private-preview.fluffyflea64.chatgpt.site>. Host access is
+currently owner-only. The second approved engineer still needs to be added before
+the two-person access criterion is complete. The hosted build is Demo-only: no
+production same-origin API gateway or protected backend has been configured.
 
 ## Run locally
 
@@ -30,8 +38,8 @@ implemented; do not expose this development server through a public tunnel.
   components and hash navigation. No third-party CDN, fonts or runtime calls.
 - `scripts/`: Node-built-in static preview server and allowlisted build copy.
 - `tests/`: component/safety checks, build smoke test and loopback HTTP tests.
-- `dist/`: generated static output, ignored by Git; suitable for static hosting
-  only once the later hosting/access ticket is completed.
+- `dist/`: generated, allowlisted static output used by the private hosted
+  preview. It contains no gateway or backend configuration.
 
 Design: ink-green backgrounds, restrained lime accent, blue/purple/peach agent
 identities, generous spacing, a responsive sidebar, text-labelled provenance
@@ -56,9 +64,9 @@ Its example question is explicitly illustrative and does not execute a query.
 Section links focus labelled destinations for keyboard users. All navigation is
 hash-based, so direct landing/dashboard URLs use the same static entry file.
 
-Hosting/access controls are not implemented by this page. The two-engineer
-audience is an intended restriction, not a claim that authentication exists.
-Continue to use localhost until OPU-91 verifies actual website/API protection.
+Hosting/access controls are supplied by the private host, not by this static
+page. Local development has no identity check. The production same-origin API
+and its independent protection remain pending in OPU-91.
 
 ## Safety and limits
 
@@ -73,7 +81,8 @@ The default development CSP blocks network connections (`connect-src 'none'`).
 The optional localhost gateway permits same-origin requests (`connect-src 'self'`)
 to four allowlisted routes. CORS and localhost checks do not replace backend
 authentication. Dev-server security headers are not automatically
-transferred to a static host: OPU-91 must configure and verify host protections.
+transferred to a static host. The document carries an interim CSP and referrer
+policy, but OPU-91 must still configure and verify HTTP host protections.
 
 Node tests check markup/hooks and HTTP behavior, not actual browser rendering,
 screen-reader behavior or visual overflow. Manual browser QA is required before
@@ -128,6 +137,11 @@ live integration is available through the optional gateway described below.
 OPU-86 through OPU-90 are implemented and automated checks pass; they are **ready
 for review**, with actual browser desktop/mobile, keyboard and visual QA pending.
 This file records local delivery status; it does not update an external tracker.
+
+OPU-91 is in progress. Frontend CI now covers the active collaboration branch;
+hosted access, protected API configuration and browser acceptance are still
+required before OPU-91 can be marked complete. Progress is recorded in the
+[OPU-91 validation note](../validation/OPU-91.md).
 
 ## Demo monitoring (OPU-88)
 
@@ -248,7 +262,13 @@ which belong to OPU-91; no production authentication is implemented here.
 Automated local HTTP integration uses a contract-compatible test backend. Actual
 backend/model connectivity and browser visual/keyboard QA remain to be verified.
 
-## Next ticket
+## Next website sprints
 
-1. OPU-91: free hosted preview, two-email access controls, frontend CI,
-   connected-API protection and end-to-end verification.
+The reviewed backlog, dependencies and acceptance criteria are in the
+[website sprint plan](../validation/website-sprint-plan.md).
+
+1. OPU-91: private hosted preview, two-email access controls, frontend CI,
+   connected-API protection and browser/end-to-end acceptance.
+2. OPU-92: truthful live dashboard and per-service readiness.
+3. OPU-93: bounded live CPU, memory and latency time-series.
+4. OPU-94: authenticated, account-scoped live conversation history.

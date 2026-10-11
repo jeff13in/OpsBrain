@@ -19,6 +19,8 @@ directory.
 Cycle 3 handoff: [async architecture](architecture/async-integration.md) and
 [OPU-52 review / Week 4 limitations](validation/OPU-52.md).
 
+Website planning: [reviewed Week 4 backlog and proposed follow-up sprints](validation/website-sprint-plan.md).
+
 ## Table of contents
 
 1. [Setup and service management](#1-setup-and-service-management)

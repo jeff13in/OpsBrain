@@ -48,6 +48,16 @@ credentials/database URL remain absent. Both live validators were rerun and
 again exited 1 with `FAIL: URLError`, before ingestion or provider calls.
 Starting Docker resolves only the engine prerequisite, not service configuration.
 
+Local setup follow-up: `opsbrain/.env` is now present and Git-ignored, with the
+required secret fields blank pending user configuration. Added a tracked
+`.dockerignore` to exclude `.env`, private keys and local development artifacts
+from build contexts. `docker compose --profile full build rag-agent` passed.
+An isolated `docker run --rm --network none` smoke test passed imports,
+`get_chat_model("answer")` selection of `openai/gpt-oss-120b`, unchanged Gemini
+embedding configuration and registration of `/query`. The smoke test used a
+dummy key without network access; it is not live provider validation. The DB
+and RAG services were not started with blank credentials.
+
 ## Resume verification
 
 Start Docker Desktop and configure the local `.env` with the settings documented

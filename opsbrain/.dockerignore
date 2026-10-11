@@ -1,0 +1,16 @@
+# Keep secrets and local development artifacts out of Docker build contexts.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.git
+infra/terraform/.terraform
+infra/terraform/*.tfstate*
+infra/terraform/terraform.tfvars

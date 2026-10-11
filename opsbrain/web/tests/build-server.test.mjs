@@ -27,7 +27,7 @@ test('loopback preview serves modules and refuses backend/secrets/mutations', as
   try {
     await once(server, 'listening');
     const origin = `http://127.0.0.1:${server.address().port}`;
-    for (const path of ['/', '/index.html', '/styles.css', '/app.js', '/ui.js', '/demo.js', '/chat.js', '/monitoring.js', '/mark.svg']) {
+    for (const path of ['/', '/index.html', '/styles.css', '/app.js', '/ui.js', '/demo.js', '/chat.js', '/monitoring.js', '/history.js', '/mark.svg']) {
       const response = await fetch(origin + path);
       assert.equal(response.status, 200, path);
       assert.equal(response.headers.get('x-content-type-options'), 'nosniff');

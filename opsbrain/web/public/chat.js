@@ -59,6 +59,11 @@ export function createChat({ reply = demoReply, onChange = () => {} } = {}) {
       state = { turns: [], pending: false, validation: '', draft: '', scenario: 'ok' };
       notify();
     },
+    restore(turns) {
+      generation += 1;
+      state = { turns: structuredClone(turns), pending: false, validation: '', draft: '', scenario: 'ok' };
+      notify();
+    },
     async submit(question, scenario = 'ok') {
       if (state.pending) return false;
       state.validation = validateQuestion(question);

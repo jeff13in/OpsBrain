@@ -12,7 +12,7 @@ test('navigation exposes exactly one current page and labels future views', () =
   const html = navigation('dashboard');
   assert.equal((html.match(/aria-current="page"/g) || []).length, 1);
   assert.match(html, /href="#\/dashboard" aria-current="page"/);
-  assert.equal((html.match(/class="nav-next"/g) || []).length, 1);
+  assert.equal((html.match(/class="nav-next"/g) || []).length, 0);
 });
 test('status badges use visible text and reject unknown state', () => {
   for (const [state, text] of Object.entries({ live: 'Live', demo: 'Demo', disconnected: 'Disconnected', pending: 'Coming next' })) assert.ok(badge(state).includes(text));
@@ -62,10 +62,11 @@ test('HTML and CSS include accessible responsive foundation hooks', async () => 
   assert.match(css, /:focus-visible/); assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /max-width: 700px/); assert.match(css, /max-width: 430px/);
 });
-test('foundation client has no network, credential or persistent storage calls', async () => {
-  for (const name of ['app.js', 'ui.js', 'demo.js', 'chat.js', 'monitoring.js']) {
+test('client has no network or credential calls and isolates persistent storage', async () => {
+  for (const name of ['app.js', 'ui.js', 'demo.js', 'chat.js', 'monitoring.js', 'history.js']) {
     const source = await readFile(new URL(`../public/${name}`, import.meta.url), 'utf8');
-    assert.doesNotMatch(source, /\b(fetch|XMLHttpRequest|WebSocket|localStorage|sessionStorage)\b/);
+    assert.doesNotMatch(source, /\b(fetch|XMLHttpRequest|WebSocket|sessionStorage)\b/);
+    if (name !== 'history.js') assert.doesNotMatch(source, /\blocalStorage\b/);
     assert.doesNotMatch(source, /LLM_API_KEY|GOOGLE_API_KEY|GITHUB_TOKEN|POSTGRES_PASSWORD/);
   }
 });

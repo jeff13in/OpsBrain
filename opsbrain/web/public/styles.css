@@ -54,6 +54,14 @@
   .menu-toggle { display: none !important; }
 }
 @layer components {
+  .history-storage-note { padding: 14px 18px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); margin-bottom: 20px; font-size: 12px; }
+  .history-list { margin: 0; padding: 0 24px; list-style: none; }
+  .history-list li { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 24px 0; }
+  .history-list li + li { border-top: 1px solid var(--line); }
+  .history-list h3 { font-size: 16px; overflow-wrap: anywhere; }
+  .history-list p { color: var(--muted); font-size: 11px; margin-top: 8px; overflow-wrap: anywhere; }
+  .history-list .button-row { flex-shrink: 0; }
+  @media (max-width: 950px) { .history-list li { flex-direction: column; align-items: flex-start; } }
   .monitoring-controls { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; padding: 24px; }
   .monitoring-controls label { font-size: 12px; }
   .monitoring-controls select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; min-height: 44px; padding: 8px 12px; max-width: 100%; }

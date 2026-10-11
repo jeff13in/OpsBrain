@@ -1,3 +1,4 @@
+import { createHistory, HISTORY_KEY } from './history.js';
 import { createMonitoring } from './monitoring.js';
 import { createChat } from './chat.js';
 import { demoStateFromHash } from './demo.js';
@@ -6,10 +7,25 @@ import { landingSectionFromHash, navigation, renderPage, routeFromHash, validate
 const main = document.querySelector('#main');
 const nav = document.querySelector('#workspace-navigation');
 const toggle = document.querySelector('.menu-toggle');
+const history = createHistory();
+let activeHistoryId = null;
+let restoringHistory = false;
 const chat = createChat({ onChange() {
-  if (routeFromHash(window.location.hash) !== 'chat') return;
-  render();
   const state = chat.snapshot();
+  if (!state.pending && !state.validation && state.turns.length && !restoringHistory) {
+    const savedId = history.save(activeHistoryId, state.turns);
+    if (!savedId && activeHistoryId) {
+      activeHistoryId = null;
+      chat.clear();
+      document.querySelector('#announcement').textContent = 'The saved conversation expired or was deleted. Start a new conversation.';
+      return;
+    }
+    activeHistoryId = savedId;
+  }
+  const route = routeFromHash(window.location.hash);
+  if (route === 'history') { render(); return; }
+  if (route !== 'chat') return;
+  render();
   document.querySelector('#announcement').textContent = state.validation || (state.pending ? 'Preparing a fixed demo answer.' : state.turns.length ? 'Demo answer ready. Sources and per-agent results follow your question.' : 'Demo conversation cleared.');
   if (state.validation) document.querySelector('#chat-question')?.focus();
   else if (!state.pending && state.turns.length) {
@@ -28,8 +44,9 @@ const monitoring = createMonitoring({ onChange() {
 
 function render(moveFocus = false) {
   const route = routeFromHash(window.location.hash);
+  if (activeHistoryId && !history.get(activeHistoryId)) { activeHistoryId = null; chat.clear(); }
   monitoring.setActive(route === 'monitoring' && !document.hidden);
-  const page = renderPage(route, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot() });
+  const page = renderPage(route, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState: history.snapshot() });
   nav.innerHTML = navigation(route);
   // Renderers contain trusted templates; all dynamic text is escaped in ui.js.
   main.innerHTML = page.html;
@@ -62,9 +79,33 @@ function render(moveFocus = false) {
   document.querySelector('#chat-form')?.addEventListener('submit', event => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    if (activeHistoryId && !history.get(activeHistoryId)) {
+      activeHistoryId = null;
+      chat.clear();
+    }
     void chat.submit(form.get('question'), form.get('scenario'));
   });
-  document.querySelector('#clear-chat')?.addEventListener('click', () => chat.clear());
+  document.querySelector('#clear-chat')?.addEventListener('click', () => { activeHistoryId = null; chat.clear(); });
+  document.querySelectorAll('[data-open-history]').forEach(button => button.addEventListener('click', () => {
+    const record = history.get(button.dataset.openHistory);
+    if (!record) { render(); document.querySelector('#announcement').textContent = 'This conversation expired or was deleted.'; return; }
+    activeHistoryId = record.id;
+    restoringHistory = true;
+    chat.restore(record.turns);
+    restoringHistory = false;
+    window.location.hash = '/chat';
+  }));
+  document.querySelectorAll('[data-delete-history]').forEach(button => button.addEventListener('click', () => {
+    history.remove(button.dataset.deleteHistory);
+    if (activeHistoryId === button.dataset.deleteHistory) { activeHistoryId = null; chat.clear(); }
+    render();
+    document.querySelector('#main').focus();
+    document.querySelector('#announcement').textContent = 'Conversation removed from available history. Check the storage notice for persistence.';
+  }));
+  document.querySelector('#clear-history')?.addEventListener('click', () => {
+    history.clear(); activeHistoryId = null; chat.clear(); render(); main.focus();
+    document.querySelector('#announcement').textContent = 'Available history cleared. Check the storage notice for persistence.';
+  });
   document.querySelectorAll('[data-source-target]').forEach(button => {
     button.addEventListener('click', () => {
       const target = document.getElementById(button.dataset.sourceTarget);
@@ -102,9 +143,21 @@ document.addEventListener('keydown', event => {
 });
 
 document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshHistory();
   monitoring.setActive(routeFromHash(window.location.hash) === 'monitoring' && !document.hidden);
   if (!document.hidden && routeFromHash(window.location.hash) === 'monitoring') render();
 });
+
+function refreshHistory() {
+  if (document.hidden) return;
+  const route = routeFromHash(window.location.hash);
+  if (activeHistoryId && !history.get(activeHistoryId)) { activeHistoryId = null; chat.clear(); }
+  if (route === 'history') render();
+}
+window.addEventListener('storage', event => {
+  if (event.key === HISTORY_KEY || event.key === null) refreshHistory();
+});
+setInterval(refreshHistory, 60000);
 
 window.addEventListener('hashchange', () => render(true));
 render();

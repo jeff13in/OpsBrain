@@ -1,4 +1,4 @@
-# OpsBrain website preview (OPU-84 / OPU-85 / OPU-86 / OPU-87 / OPU-88)
+# OpsBrain website preview (OPU-84 / OPU-85 / OPU-86 / OPU-87 / OPU-88 / OPU-89)
 
 Local-only, two-engineer UI foundation on `joint`. The existing Python API,
 Groq/Gemini configuration, Compose and transports are untouched. This is **not**
@@ -61,7 +61,7 @@ Continue to use localhost until OPU-91 verifies actual website/API protection.
 
 ## Safety and limits
 
-The build copies exactly eight public assets, not the backend/environment tree.
+The build copies exactly nine public assets, not the backend/environment tree.
 Unknown existing build outputs cause a failure instead of deleting user files.
 Never put provider keys, database credentials, access tokens or private
 operational fixtures in `public/`. Environment/config copying is not supported.
@@ -84,7 +84,8 @@ Open `http://127.0.0.1:4173/#/dashboard`, then use **Demo preview state** to
 choose Populated, Partial availability, Loading, Empty, Error or Disconnected.
 Direct links such as `#/dashboard?state=populated` select a preview state;
 missing or unknown states default to Disconnected. Navigation state lives in the
-URL only; the page sends no backend requests and saves no conversations.
+URL only; the dashboard sends no backend requests. Completed chat conversations can
+be saved locally by the History feature.
 
 `public/demo.js` contains immutable, synthetic agent context, scalar signals and
 example activity. Demo badges label the data; the backend always stays visibly
@@ -102,7 +103,7 @@ and keyboard QA is still required before acceptance.
 
 Open `http://127.0.0.1:4173/#/chat`, write a question (5–2000 trimmed
 characters), choose a **Demo response scenario**, and select **Show demo answer**.
-The question stays in page memory. The selected scenario returns a fixed
+The question stays in this browser; completed conversations save locally. The selected scenario returns a fixed
 synthetic answer independent of the question; no model or backend is called.
 A short local delay displays a loading state and prevents duplicate submissions.
 
@@ -117,12 +118,13 @@ The renderer uses the backend response field names `status`, `answer`, `sources`
 and `results`, but this is not a connected API adapter. Questions, answers,
 source text and error messages are escaped. HTML and Markdown are plain text.
 
-Up to 20 turns remain in page memory during navigation. Reloading or **Clear
-conversation** removes them. Clearing during loading discards the stale response.
-No persistent history or backend session is implemented; those belong to OPU-89
-and OPU-90. Unsubmitted drafts may be discarded when navigating away.
+Up to 20 turns belong to each conversation. Completed turns save automatically
+in this browser. **New conversation** resets the active chat while retaining its
+saved history. Reopen or delete saved conversations from History. Unsubmitted
+drafts may be discarded when navigating away. No backend session is implemented;
+live integration belongs to OPU-90.
 
-OPU-86 through OPU-88 are implemented and automated checks pass; they are **ready
+OPU-86 through OPU-89 are implemented and automated checks pass; they are **ready
 for review**, with actual browser desktop/mobile, keyboard and visual QA pending.
 This file records local delivery status; it does not update an external tracker.
 
@@ -156,9 +158,35 @@ refresh instead of substituting successful demo data.
 Actual browser desktop/mobile, visual, keyboard and screen-reader review remain
 pending. Live monitoring queries and response validation belong to OPU-90.
 
+## Browser-local history (OPU-89)
+
+Open `http://127.0.0.1:4173/#/history`. Completed demo conversations save
+automatically under the browser storage key `opsbrain.demo-history.v1`.
+**Open in chat** restores the questions, answers, sources and per-agent outcomes,
+and allows continuing the same conversation. Only completed turns save; a pending
+answer is not restored after reload. **New conversation** keeps saved history;
+**Delete** and **Delete all history** remove saved records and clear an affected
+active chat, including any pending response.
+
+Each record expires 72 hours after creation, even if reopened or continued.
+Expired records are rejected on access and removed from storage on reads,
+navigation, tab visibility changes and minute checks while the page is visible.
+Cleanup requires the website to run; a closed browser cannot delete data on a
+timer. The latest 20 conversations (up to 20 questions each) are retained.
+Dates are displayed as UTC timestamps. Stored data is validated and rendered as
+escaped text, and demo provenance is retained.
+
+History belongs to this browser profile and exact origin (host and port), with
+no server sync, account protection or encryption. Storage failures switch to
+page-memory history with a visible warning. Changes in that mode are lost on
+reload, and previously saved disk data may remain if deletion cannot be written.
+Malformed or oversized records are discarded safely. Operations read the current
+owned storage key before changing it; storage events update other open tabs.
+Simultaneous writes across tabs remain best effort because browser storage has
+no transactional merge. No unrelated storage keys are touched.
+
 ## Next tickets (in agreed order)
 
-1. OPU-89: browser-local conversation history with 72-hour expiry.
-2. OPU-90: read-only API adapter and deliberate demo/live transitions.
-3. OPU-91: free hosted preview, two-email access controls, frontend CI,
+1. OPU-90: read-only API adapter and deliberate demo/live transitions.
+2. OPU-91: free hosted preview, two-email access controls, frontend CI,
    connected-API protection and end-to-end verification.

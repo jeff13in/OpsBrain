@@ -5,7 +5,8 @@ import { AGENTS, ROUTES, agentCard, badge, emptyState, errorState, escapeHtml, l
 
 test('hash routing supports home and every workspace route with safe fallback', () => {
   for (const id of ['home', ...ROUTES.map(route => route.id)]) assert.equal(routeFromHash(`#/${id}`), id);
-  for (const value of ['', '#main', '#/<script>', '#/unknown']) assert.equal(routeFromHash(value), 'dashboard');
+  for (const value of ['', '#', '#/']) assert.equal(routeFromHash(value), 'home');
+  for (const value of ['#main', '#/<script>', '#/unknown']) assert.equal(routeFromHash(value), 'dashboard');
 });
 test('navigation exposes exactly one current page and labels future views', () => {
   const html = navigation('dashboard');
@@ -35,7 +36,7 @@ test('loading and error examples have accessible status semantics', () => {
 test('rendered pages have one heading and future features disclose their ticket', () => {
   for (const id of ['home', ...ROUTES.map(route => route.id)]) {
     const page = renderPage(id);
-    assert.equal((page.html.match(/<h1>/g) || []).length, 1);
+    assert.equal((page.html.match(/<h1(?:\s[^>]*)?>/g) || []).length, 1);
     const ticket = ROUTES.find(route => route.id === id)?.ticket;
     if (ticket) assert.ok(page.html.includes(ticket));
   }

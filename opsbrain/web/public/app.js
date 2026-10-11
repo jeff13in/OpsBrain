@@ -1,4 +1,4 @@
-import { navigation, renderPage, routeFromHash, validateDraft } from './ui.js';
+import { landingSectionFromHash, navigation, renderPage, routeFromHash, validateDraft } from './ui.js';
 
 const main = document.querySelector('#main');
 const nav = document.querySelector('#workspace-navigation');
@@ -10,11 +10,18 @@ function render(moveFocus = false) {
   nav.innerHTML = navigation(route);
   // Renderers contain trusted templates; all dynamic text is escaped in ui.js.
   main.innerHTML = page.html;
+  main.classList.toggle('landing-page', route === 'home');
   document.querySelector('#breadcrumb').textContent = page.title;
   document.title = `${page.title} — OpsBrain`;
   toggle.setAttribute('aria-expanded', 'false');
   nav.classList.remove('is-open');
   if (moveFocus) main.focus();
+  const section = landingSectionFromHash(window.location.hash);
+  if (section) {
+    const target = document.getElementById(section);
+    target?.scrollIntoView({ block: 'start' });
+    target?.focus({ preventScroll: true });
+  }
   document.querySelector('#draft-form')?.addEventListener('submit', event => {
     event.preventDefault();
     document.querySelector('#draft-result').textContent = validateDraft(new FormData(event.currentTarget).get('draft'));

@@ -1,4 +1,4 @@
-# OpsBrain website foundation (OPU-84)
+# OpsBrain website preview (OPU-84 / OPU-85)
 
 Local-only, two-engineer UI foundation on `joint`. The existing Python API,
 Groq/Gemini configuration, Compose and transports are untouched. This is **not**
@@ -46,6 +46,19 @@ saves questions. The overview shows all agents disconnected instead of inventing
 successful backend connections or live metrics. Hash routes avoid server-side
 rewrite requirements and work with static assets.
 
+## Landing page (OPU-85)
+
+The root URL now opens Home; `#/home` links directly to the landing page and
+`#/dashboard` opens the workspace. Home explains the product, four specialist
+agents, existing backend investigation flow and the current frontend limits.
+Its example question is explicitly illustrative and does not execute a query.
+Section links focus labelled destinations for keyboard users. All navigation is
+hash-based, so direct landing/dashboard URLs use the same static entry file.
+
+Hosting/access controls are not implemented by this page. The two-engineer
+audience is an intended restriction, not a claim that authentication exists.
+Continue to use localhost until OPU-91 verifies actual website/API protection.
+
 ## Safety and limits
 
 The build copies exactly five public assets, not the backend/environment tree.
@@ -66,11 +79,10 @@ backend reachability is claimed by passing these foundation tests.
 
 ## Next tickets (in agreed order)
 
-1. OPU-85: landing-page content and polish.
-2. OPU-86: dashboard demo fixtures and states.
-3. OPU-87: chat, citations and per-agent results.
-4. OPU-88: monitoring charts and refresh controls.
-5. OPU-89: browser-local conversation history with 72-hour expiry.
-6. OPU-90: read-only API adapter and deliberate demo/live transitions.
-7. OPU-91: free hosted preview, two-email access controls, frontend CI,
+1. OPU-86: dashboard demo fixtures and states.
+2. OPU-87: chat, citations and per-agent results.
+3. OPU-88: monitoring charts and refresh controls.
+4. OPU-89: browser-local conversation history with 72-hour expiry.
+5. OPU-90: read-only API adapter and deliberate demo/live transitions.
+6. OPU-91: free hosted preview, two-email access controls, frontend CI,
    connected-API protection and end-to-end verification.

@@ -38,7 +38,7 @@ test('landing states audience, missing access protection and current limits', ()
   assert.match(html, /Not a public production service/);
   assert.match(html, /two approved email identities/);
   assert.match(html, /independently protect any connected API/);
-  assert.match(html, /Chat, charts and labelled demo data are next/);
+  assert.match(html, /Labelled dashboard states, demo chat and monitoring charts are available/);
   assert.ok(!/<form|<input|<button/.test(html), 'No signup, payment or fake application action');
 });
 

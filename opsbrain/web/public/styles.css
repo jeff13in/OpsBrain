@@ -54,6 +54,73 @@
   .menu-toggle { display: none !important; }
 }
 @layer components {
+  .monitoring-controls { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; padding: 24px; }
+  .monitoring-controls label { font-size: 12px; }
+  .monitoring-controls select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; min-height: 44px; padding: 8px 12px; max-width: 100%; }
+  .monitoring-controls .auto-refresh-label { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 0; }
+  .auto-refresh-label input { accent-color: var(--accent); width: 20px; height: 20px; }
+  .monitoring-refresh-note { color: var(--muted); font-size: 11px; margin: 16px 0 24px; overflow-wrap: anywhere; }
+  .monitoring-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  .monitoring-state, .metric-body { padding: 24px; }
+  .monitoring-partial { margin-bottom: 20px; }
+  .metric-value { font-size: 32px; line-height: 1.3; }
+  .metric-value > span { color: var(--muted); font-size: 18px; margin-left: 6px; }
+  .metric-value small { display: block; color: var(--muted); font-size: 11px; margin-top: 6px; }
+  .metric-chart { width: 100%; height: auto; display: block; margin-top: 20px; overflow: visible; }
+  .chart-grid { stroke: var(--line); stroke-width: 1; fill: none; }
+  .chart-line { stroke: var(--accent); stroke-width: 3; fill: none; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+  .metric-chart text { fill: var(--muted); font-size: 14px; }
+  .chart-samples { margin-top: 16px; font-size: 12px; }
+  .chart-samples summary { cursor: pointer; min-height: 44px; padding: 10px 0; }
+  .chart-samples table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .chart-samples caption { text-align: left; color: var(--muted); padding: 10px 0; }
+  .chart-samples th, .chart-samples td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
+  @media (max-width: 950px) { .monitoring-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 430px) { .monitoring-controls { flex-direction: column; align-items: stretch; padding: 16px; } .monitoring-controls select { width: 100%; } .metric-body { padding: 16px; } }
+  .chat-conversation { margin-bottom: 24px; }
+  .chat-turn { padding: 24px; }
+  .chat-turn + .chat-turn { border-top: 1px solid var(--line); }
+  .chat-question { padding: 16px 20px; background: var(--bg); border-radius: 10px; margin-bottom: 20px; }
+  .chat-question h3 { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .chat-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .chat-answer-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .chat-answer h4 { font-size: 12px; margin: 24px 0 10px; color: var(--muted); }
+  .chat-sources { padding-left: 24px; font-size: 12px; overflow-wrap: anywhere; }
+  .chat-sources li { padding: 8px; scroll-margin: 24px; }
+  .chat-sources .small-label { display: block; }
+  .citation { font: inherit; color: var(--accent); background: transparent; border: 1px solid var(--line); border-radius: 5px; min-height: 32px; min-width: 32px; padding: 2px 5px; }
+  .chat-agent-results { display: grid; gap: 10px; }
+  .chat-agent-result { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .chat-agent-result summary { cursor: pointer; min-height: 32px; }
+  .chat-agent-result summary span:last-child { color: var(--muted); font-size: 11px; margin-left: 12px; }
+  .chat-agent-result p { margin-top: 14px; font-size: 12px; }
+  .agent-source-list { color: var(--muted); font-size: 11px; padding-left: 18px; }
+  .chat-composer { padding: 24px; }
+  .chat-composer-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; justify-content: space-between; }
+  .chat-composer-actions label { font-size: 12px; }
+  .chat-composer select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; min-height: 44px; padding: 8px 12px; max-width: 100%; }
+  @media (max-width: 430px) { .chat-turn, .chat-composer { padding: 16px; } .chat-composer-actions { align-items: stretch; flex-direction: column; } .chat-composer select { width: 100%; } .chat-conversation .panel-heading { flex-wrap: wrap; } }
+  .demo-controls { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 20px 24px; }
+  .demo-controls p, .demo-state-label { color: var(--muted); font-size: 12px; }
+  .demo-controls h2 { margin-bottom: 8px; }
+  .demo-controls label { font-size: 12px; }
+  .demo-controls select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; min-height: 44px; padding: 8px 12px; width: 100%; }
+  .demo-state-label { margin: 16px 0 24px; }
+  .demo-state-content { padding: 24px; }
+  .demo-state-content .button { margin-top: 16px; }
+  .agent-card .sample-summary { color: var(--text); margin-top: 18px; }
+  .signal-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 24px; margin: 0; }
+  .signal-grid dt { font-size: 11px; color: var(--muted); }
+  .signal-grid dt .badge { display: flex; width: fit-content; margin-top: 8px; }
+  .signal-grid dd { margin: 12px 0 4px; font-size: 28px; }
+  .signal-grid p { font-size: 10px; color: var(--quiet); }
+  .activity-list { list-style: none; padding: 0 24px; margin: 0; }
+  .activity-list li { padding: 18px 0; overflow-wrap: anywhere; }
+  .activity-list li + li { border-top: 1px solid var(--line); }
+  .activity-list strong { display: block; font-size: 12px; font-weight: 500; margin: 4px 0; }
+  .activity-list p { color: var(--muted); font-size: 11px; }
+  @media (max-width: 700px) { .demo-controls { flex-direction: column; align-items: stretch; } }
+  @media (max-width: 430px) { .signal-grid { grid-template-columns: 1fr; } }
   .button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 44px; padding: 10px 16px; font-size: 12px; font-weight: 600; border-radius: 8px; border: 1px solid transparent; transition: background .15s ease; }
   .button .icon { width: 16px; height: 16px; } .primary { background: var(--accent); color: var(--accent-ink); } .primary:hover { background: #d1f49f; }
   .secondary { background: var(--panel); border-color: var(--line); color: var(--text); } .secondary:hover { background: var(--panel-hover); }

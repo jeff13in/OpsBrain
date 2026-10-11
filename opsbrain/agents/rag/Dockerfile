@@ -11,10 +11,12 @@ RUN pip install --no-cache-dir \
     "langchain-openai>=0.3,<0.4" \
     "langchain-google-genai>=2.0,<4.0" \
     "langgraph>=0.2,<1.0" \
-    "psycopg[binary]>=3.2,<4.0"
+    "psycopg[binary]>=3.2,<4.0" \
+    httpx kafka-python
 
 COPY shared/ ./shared/
 COPY agents/rag/ ./rag/
+ENV PYTHONPATH=/app
 
 EXPOSE 8001
 CMD ["uvicorn", "rag.main:app", "--host", "0.0.0.0", "--port", "8001"]

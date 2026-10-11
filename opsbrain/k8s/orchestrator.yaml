@@ -25,6 +25,10 @@ spec:
             - name: http
               containerPort: 8000
           env:
+            - name: AGENT_TRANSPORT
+              value: "kafka"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
             - name: LLM_API_KEY
               valueFrom:
                 secretKeyRef:

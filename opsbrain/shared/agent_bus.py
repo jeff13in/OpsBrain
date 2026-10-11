@@ -277,6 +277,7 @@ class KafkaAgentBus:
             if self._producer is not None:
                 _close(self._producer)
             return
+        logger.info("Orchestrator listening for agent replies on %s (group %s)", self.reply_topic, self.group_id)
         try:
             consumer.listen(self._on_reply, stop=self._stop, on_ready=self._ready.set)
         except Exception:

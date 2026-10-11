@@ -9,12 +9,16 @@ All code lives in `opsbrain/`; run every command below from that folder unless
 it says otherwise. The full operations guide is [`opsbrain/README.md`](opsbrain/README.md),
 and the orchestrator/agent contract is [`opsbrain/orchestrator/CONTRACT.md`](opsbrain/orchestrator/CONTRACT.md).
 
+Cycle 3 handoff: [async architecture](opsbrain/architecture/async-integration.md)
+and [OPU-52 review / Week 4 limitations](opsbrain/validation/OPU-52.md).
+
 ### Branches
 
 | Branch | What it is |
 |---|---|
-| `jeffin-dev` | **Active development branch.** CI runs on every push |
-| `rifat-updated` | **Everything below describes this branch:** Groq chat models (OPU-80–83), observability (OPU-56), Kafka transport (OPU-50) and the OPU-51 live-run fixes, merged together |
+| `joint` | Shared development from `rifat-updated`, including OPU-60/61. CI does not yet run on pushes/PRs into this branch (OPU-52 finding R1). |
+| `jeffin-dev` | Integration source branch; configured CI runs on matching pushes here |
+| `rifat-updated` | Source for `joint`: merged Groq migration, observability, agent integrations and pipeline fixes |
 | `main` | Stable branch, last updated from `jeffin-dev` via PR #1 (Sept 8), plus a title rename on Oct 2. Behind `jeffin-dev` |
 | `Rifat` | Rifat's original work in the old root layout (`rag/`, `monitoring/`, `data/`). Fully merged into `jeffin-dev` (PR #2), so start new work from `jeffin-dev` instead |
 
@@ -118,9 +122,10 @@ Agents never return an error as a normal answer. `/query` returns:
 | 404 / 400 | The PR/commit/workflow doesn't exist, or bad input | `bad_request`, not retried |
 | 500 | Missing or wrong credentials, permissions or config | `agent_error`, not retried |
 
-Backend calls are time-limited so an agent always answers within the
-orchestrator's budget: AWS 5s connect / 20s read / 2 attempts, Kubernetes 20s
-per call, GitHub 10s per request.
+Backend calls have per-call limits: AWS 5s connect / 20s read / 2 attempts,
+Kubernetes 20s per call, GitHub 10s per request. These do not guarantee the
+whole operation finishes within the orchestrator's 30s caller budget;
+synchronous work can continue after timeout. See the integration architecture.
 
 ---
 
@@ -128,6 +133,7 @@ per call, GitHub 10s per request.
 
 ### Prerequisites
 - Docker + Docker Compose
+- A Groq chat API key (`LLM_API_KEY`)
 - A Google AI Studio API key (free: https://aistudio.google.com/apikey)
 - Optional: AWS credentials / kubeconfig (Infra Agent), `GITHUB_TOKEN` + `GITHUB_REPO` (Code Agent)
 
@@ -290,11 +296,14 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/ruff check agents/ orchestrator/ shared/
 ```
 CI runs the same two commands on every push to `main` or `jeffin-dev` (and on PRs
-into `main`), and a failing test fails the build. Current count: 131 passed, 1 skipped
-(`test_database.py` needs `RAG_TEST_DATABASE_URL`).
+into `main`), and a failing test fails the build. It does not run on `joint`
+pushes or PRs into `joint`. The latest recorded combined regression run was
+217 passed with the opt-in database test configured; see
+[`opsbrain/validation/OPU-61.md`](opsbrain/validation/OPU-61.md).
 
 ### Live RAG check
-Needs the stack running with a real `GOOGLE_API_KEY`. It reingests the runbooks
+Needs `GOOGLE_API_KEY` for embeddings and `LLM_API_KEY` for Groq chat in the
+running stack. It reingests the runbooks
 and checks storage, retrieval, and a grounded answer:
 ```bash
 DATABASE_URL="postgresql://opsbrain:<POSTGRES_PASSWORD>@localhost:5434/opsbrain" \
@@ -310,11 +319,17 @@ Put a `.md` or `.txt` file in `opsbrain/docs/` and run the ingest command again.
 
 ## Known gaps
 
-- **Infra and Code haven't run against real AWS, Kubernetes or GitHub yet**; the OPU-51
-  live run had no credentials, so they only exercised the "not configured" error path.
+CI, deployment, authorization and delivery findings are recorded in the
+[OPU-52 handoff](opsbrain/validation/OPU-52.md). Implemented integration does
+not imply full four-backend or production deployment acceptance.
+
+- **Infra/Code real-backend acceptance is deferred on this setup**; current
+  pipeline evidence includes missing configuration and partial-result paths,
+  not proof of successful AWS/Kubernetes/GitHub integration on this branch.
 - **Questions under 5 characters fail** ("hi" → RAG's 422 → HTTP 502); see `CONTRACT.md` gap 3.
-- **Groq's free tier allows about 1,000 requests and 200K tokens a day per model**; RAG answers
-  (~3,300 tokens each) are the binding limit at roughly 60 a day.
+- **Provider quotas are account/model-specific**; consult the provider dashboard
+  instead of assuming fixed daily free-tier capacity. Fallbacks preserve service
+  behavior but do not increase provider quota.
 - **Alert thresholds need tuning** (review on OPU-64): the latency alerts fire at 2s/10s, but RAG
   and `/ask` normally take 5–28s.
 - **Monitoring's `/query` picks its answer by keyword** (alerts, pods or scrape targets);

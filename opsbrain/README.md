@@ -16,6 +16,9 @@ directory.
 
 ---
 
+Cycle 3 handoff: [async architecture](architecture/async-integration.md) and
+[OPU-52 review / Week 4 limitations](validation/OPU-52.md).
+
 ## Table of contents
 
 1. [Setup and service management](#1-setup-and-service-management)
@@ -762,9 +765,10 @@ docker compose --profile full up -d --force-recreate infra-agent
 
 ### Kubernetes configuration and access
 
-Set `KUBECONFIG` in `.env` to a kubeconfig file path, **but read Limitation
-2 below first** — as shipped, this does not work without an additional
-Compose change you'd have to make yourself.
+Use the existing `docker-compose.kubernetes.yml` override and set
+`KUBECONFIG_HOST` to an absolute host path containing a self-contained kubeconfig
+(see §1). Its API server must be reachable from Docker. A Windows `KUBECONFIG`
+path alone does not mount the file into the Linux container.
 
 ### Terraform prerequisites
 
@@ -780,20 +784,13 @@ to actually use this endpoint, you'd need to add a Terraform install step to
    container simply because `boto3`/`kubernetes` are installed
    (`agents/infra/Dockerfile`) — they stay `true` even with zero AWS
    credentials configured or no kubeconfig at all. A structured endpoint
-   call is the only way to find out if a backend actually works; expect
-   `503` with a descriptive error if it doesn't.
+   call is the way to find out if a backend works. Missing config or
+   credential/permission errors return 500; dependency outages return 503.
 
-2. **Compose passes `KUBECONFIG` as an environment variable but does not
-   mount a kubeconfig file into the container.** Setting `KUBECONFIG=C:\Users\...\config`
-   in `.env` sets that *path string* inside the Linux container — but no
-   file exists at that path inside the container, because Windows host
-   paths aren't automatically visible to containers. Without a volume mount,
-   the Kubernetes client will fail to load any config. **This is a real
-   prerequisite you'd have to add yourself**, e.g. by adding a bind mount
-   under `infra-agent.volumes` in `docker-compose.yml` such as
-   `- ${KUBECONFIG}:/root/.kube/config:ro` and setting
-   `KUBECONFIG=/root/.kube/config` for the container — this is not already
-   wired up in this branch.
+2. **Base Compose does not mount a host kubeconfig.** The optional
+   `docker-compose.kubernetes.yml` override mounts `KUBECONFIG_HOST` read-only
+   at `/app/kubeconfig/config` and selects it with container `KUBECONFIG`.
+   A reachable real API server and valid credentials remain prerequisites.
 
 3. **The current `agents/infra/Dockerfile` does not install Terraform** —
    only `pip install fastapi uvicorn pydantic boto3 kubernetes`. There is no
@@ -821,16 +818,11 @@ to actually use this endpoint, you'd need to add a Terraform install step to
    no relationship to it whatsoever and will fail independently of whether
    the monitoring stack is running.
 
-7. **`POST /query` can return an HTTP `200` with an error message as the
-   answer, and an empty `sources` array**, rather than an HTTP error code —
-   confirmed in `agent.py::ask()`, which catches `InfraClientError`
-   internally and returns it as plain text. Only the structured `GET`
-   endpoints above (`/aws/instances`, `/k8s/pods`, etc.) return proper
-   `503`s on failure — **except `/health/summary`, which always returns
-   `200`** even when every backend check fails (by design — see that
-   endpoint's description above). Don't treat a `200` from `/query` or
-   `/health/summary` as proof the underlying check succeeded — read the
-   `answer`/`overall` field.
+7. **`POST /query` propagates typed failures (OPU-62).** Dependency
+   outages/throttling return 503; input/resource errors return 400/404; missing
+   configuration or credential/permission errors return 500. These are not
+   disguised as successful answer prose. `/health/summary` still returns 200
+   for a diagnostic report even when checks fail: read `overall` and checks.
 
 8. **`/k8s/usage` needs `metrics-server` installed in the target cluster,
    separately from the cluster itself being reachable.** A cluster with a
@@ -1279,11 +1271,11 @@ pytest tests\ -v --tb=short
   expired/malformed requests. No real broker involved (that's OPU-51).
 - `tests\test_monitoring_query.py` — the Monitoring agent's `/query`
   (alerts, pod health, scrape targets; 503 when a backend is down), mocked.
-- **No automated tests exist for the Code Agent in this branch** — no
-  `test_code_agent.py`. Its correctness so far has only been verified
-  through the manual/live checks documented in §5 and §7 (including a real
-  `rerun_workflow` call against this repo's own Actions history), not an
-  automated suite. This is a real gap, not an oversight in this document.
+- `tests\test_agent_failures.py` exercises Infra/Code ASGI boundaries,
+  typed failures, GitHub read timeout and backend timeout configuration with
+  injected dependencies. `tests\test_pipeline_resilience.py` tests serialized
+  transport/aggregation; `tests\test_rag_monitoring_failures.py` tests safe
+  query validation/errors/recovery. These do not certify real backend access.
 - `scripts\validate_rag.py` (§2) is a manual live-integration script, not
   part of the automated `pytest` run.
 
@@ -1291,28 +1283,16 @@ pytest tests\ -v --tb=short
 
 ## 9. Architecture, project structure, and roadmap
 
+Current architecture: see [async integration](architecture/async-integration.md).
+
+```text
+POST /ask -> route -> parallel HTTP (default) / Kafka (opt-in) queries
+                     | RAG | Monitoring | Infra | Code |
+          <- synthesize / labeled fallback <- normalized results
 ```
-User (CLI / Slack — not built yet)
-       │
-       ▼
-┌──────────────────┐
-│   Orchestrator   │  ← forwards /ask to RAG only; multi-agent routing/synthesis unimplemented
-│   (port 8000)    │
-└────────┬─────────┘
-         │  (only this one path is wired up)
-         ▼
-    ┌────────┐        Direct HTTP calls work, but aren't routed
-    │  RAG   │        through the orchestrator yet:
-    │ Agent  │        ┌──────────┐  ┌────────┐  ┌──────────────┐
-    │ :8001  │        │Monitoring│  │ Infra  │  │    Code      │
-    └───┬────┘        │  Agent   │  │ Agent  │  │    Agent     │
-        │              │  :8002   │  │ :8003  │  │    :8004     │
-     pgvector          └────┬─────┘  └───┬────┘  └──────┬───────┘
-     (docs/                 │            │              │
-      runbooks)      Prometheus/    AWS/K8s/        GitHub REST
-                      Grafana/      Terraform        API
-                      Alertmanager
-```
+
+All four agents are integrated; real Infra/Code backend acceptance is still
+deferred. See [OPU-52](validation/OPU-52.md) for evidence and release limitations.
 
 ### Agent responsibilities — implemented vs. unfinished
 
@@ -1320,8 +1300,8 @@ User (CLI / Slack — not built yet)
 |-------|-----------------------------|------------|
 | **RAG** | Full ingest → embed (Gemini) → store (pgvector) → retrieve → answer pipeline, with citation validation | Chunking/top-k tuning env vars from `.env.example` don't match the real ones (§2) |
 | **Monitoring** | Prometheus/Grafana/Alertmanager integration, `/query`, alert summaries, demo pod health, `/metrics` | No real Kubernetes cluster behind the demo pod metrics |
-| **Infra** | Real AWS (boto3: EC2/EKS/RDS), real Kubernetes client (pods/nodes/deployments/resource usage), real Terraform-state-reading logic, an aggregate health-summary endpoint, graceful degradation everywhere, moto-based test coverage for the AWS calls | Kubeconfig isn't actually mountable as shipped; Terraform CLI isn't installed; `/terraform/plan` never generates a plan, only displays one; K8s-side methods have no unit tests, only manual verification |
-| **Code** | Real GitHub REST API integration — PRs, commits, deployments, check-run status, Actions runs, and two real mutating actions (rerun a run, dispatch a workflow) | Check-runs only (not the older combined-status API); no test coverage at all; `workflow_dispatch` triggering only works against workflows that declare that trigger (this repo's own CI doesn't) |
+| **Infra** | Real AWS (boto3: EC2/EKS/RDS), real Kubernetes client (pods/nodes/deployments/resource usage), real Terraform-state-reading logic, an aggregate health-summary endpoint, graceful degradation everywhere, moto-based test coverage for the AWS calls | Kubeconfig mount is opt-in; real cluster required. Terraform CLI is absent; `/terraform/plan` only displays state/plan files. Kubernetes resource-method success coverage remains incomplete |
+| **Code** | Real GitHub REST API integration — PRs, commits, deployments, check-run status, Actions runs, and two real mutating actions (rerun a run, dispatch a workflow) | Check-runs only (not the older combined-status API); boundary/failure tests exist, but broad success-path coverage is still needed; `workflow_dispatch` triggering only works against workflows that declare that trigger (this repo's own CI doesn't) |
 | **Orchestrator** | `/health`, `/ask`, Groq routing, concurrent HTTP/Kafka fan-out, synthesis, keyword/labeled fallbacks, bounded session history | Infrastructure/GitHub backend setup remains required; memory is per replica |
 
 ### Project structure
@@ -1359,5 +1339,5 @@ opsbrain/
 - [x] `/metrics` endpoints, Grafana dashboards, Loki logging, and alert rules (OPU-56)
 - [x] Optional kubeconfig mounting via `docker-compose.kubernetes.yml` (real cluster still required)
 - [ ] Terraform CLI installed in the Infra Agent's image (§4, Limitation 3)
-- [ ] Automated test coverage for the Code Agent, and for the Infra Agent's Kubernetes-side methods (AWS-side is covered via `moto`)
+- [ ] Expand Code success-path and Infra Kubernetes resource-method coverage; boundary/failure tests already exist in `test_agent_failures.py`
 - [ ] Real AWS EKS deployment via Terraform + ArgoCD — Terraform definitions exist under `infra/terraform/` but have not been applied to any real account, and the CI `deploy` stage's `ARGOCD_SERVER`/`ARGOCD_TOKEN` secrets can't be filled in with real values until an EKS cluster + ArgoCD install actually exist

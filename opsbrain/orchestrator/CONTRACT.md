@@ -158,7 +158,11 @@ Pass the same `session_id` on each `/ask` to keep context. The last 6 question/a
 are kept per session, sessions expire after 1h idle, and at most 1000 are held (least
 recently used are evicted). Failed (`error`) turns aren't remembered.
 
-## Known gaps in the agents (to fix before OPU-44 / OPU-50)
+## Integration status and remaining limitations
+
+See the [async architecture](../architecture/async-integration.md) and
+[OPU-52 review / Week 4 handoff](../validation/OPU-52.md) for current delivery,
+readiness, deployment and authorization limitations.
 
 1. **Monitoring `/query` is integrated.** Alerts, pod health and scrape targets
    return `AgentReply`-compatible answers over HTTP or opt-in Kafka. It answers every
@@ -167,9 +171,11 @@ recently used are evicted). Failed (`error`) turns aren't remembered.
 2. ~~**Infra and Code `ask()` return errors as 200s.**~~ Fixed in OPU-62. `/query` now returns
    503 when the backend is down, slow or throttled, 404/400 for things that don't exist or bad
    input, and 500 when credentials, permissions or config are missing. Backend calls are bounded
-   so each agent replies within the Orchestrator's 30s budget: AWS 5s to connect, 20s to read,
-   2 attempts; Kubernetes 20s per request; GitHub 10s per request; Infra's health summary runs
-   its 6 checks at the same time.
+   per call: AWS 5s connect, 20s read, 2 attempts; Kubernetes 20s per request;
+   GitHub 10s per request. Infra's six summary checks run concurrently.
+   These do not guarantee whole-operation completion within the caller's 30s
+   budget; synchronous work can continue after cancellation, and retries or
+   sequential calls can exceed that budget.
 3. **RAG's `/query` requires `question` ≥ 5 characters.** Shorter questions get a 422, which maps to `bad_request`.
 4. **Memory is per process.** `k8s/orchestrator.yaml` runs 2 replicas, so a session's next
    turn can land on a pod that never saw it. This needs sticky sessions or a shared store

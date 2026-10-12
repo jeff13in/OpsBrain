@@ -15,6 +15,7 @@ from orchestrator.auth.sessions import (
     InvalidIdentity,
     ProviderUnavailable,
     SessionManager,
+    WorkspaceUnavailable,
 )
 from orchestrator.auth.settings import AuthSettings, configured_boundary
 
@@ -98,3 +99,17 @@ def workspace_session(workspace_id: UUID, request: Request, boundary: Boundary):
     if str(workspace_id) not in principal.workspace_ids:
         raise HTTPException(404, 'Workspace unavailable')
     return JSONResponse({'workspace_id': str(workspace_id), 'user_id': principal.user_id}, headers={'Cache-Control': 'no-store'})
+
+
+@router.get('/api/workspaces/{workspace_id}/summary')
+def workspace_summary(workspace_id: UUID, request: Request, boundary: Boundary):
+    settings, manager = boundary
+    try:
+        data = manager.workspace_summary(request.cookies.get(settings.cookie_name), str(workspace_id))
+    except InvalidIdentity:
+        raise HTTPException(401, 'Authentication required', headers={'Cache-Control': 'no-store'}) from None
+    except WorkspaceUnavailable:
+        raise HTTPException(404, 'Workspace unavailable', headers={'Cache-Control': 'no-store'}) from None
+    except (ValueError, psycopg.Error, ProviderUnavailable):
+        raise HTTPException(503, 'Workspace unavailable', headers={'Cache-Control': 'no-store'}) from None
+    return JSONResponse(data, headers={'Cache-Control': 'no-store'})

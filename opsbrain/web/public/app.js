@@ -5,14 +5,26 @@ import { createHistory, HISTORY_KEY } from './history.js';
 import { createMonitoring } from './monitoring.js';
 import { createChat, demoReply } from './chat.js';
 import { demoStateFromHash } from './demo.js';
-import { landingSectionFromHash, navigation, renderPage, routeFromHash, validateDraft } from './ui.js';
+import { clientNavigation, landingSectionFromHash, navigation, renderPage, routeFromHash, validateDraft } from './ui.js';
+import { createWorkspace, workspaceDemoRoute, workspaceSectionFromHash } from './workspace.js';
 
 const main = document.querySelector('#main');
 const nav = document.querySelector('#workspace-navigation');
 const toggle = document.querySelector('.menu-toggle');
 const isAuthRoute = () => AUTH_ROUTES.some(item => item.id === routeFromHash(window.location.hash));
+function contentRoute() {
+  const root = routeFromHash(window.location.hash);
+  return root === 'workspace' ? workspaceDemoRoute(window.location.hash) || root : root;
+}
+const workspace = createWorkspace({ onChange() {
+  if (routeFromHash(window.location.hash) === 'workspace') { render(); document.getElementById('workspace-data-status')?.focus(); }
+}, onUnauthorized(destination) { accountSession.leave(); window.location.hash = destination; } });
 const accountSession = createProtectedSession({ onChange() {
-  if (routeFromHash(window.location.hash) === 'workspace') { render(); document.getElementById('workspace-status')?.focus(); }
+  if (routeFromHash(window.location.hash) !== 'workspace') return;
+  const state = accountSession.snapshot();
+  if (state.status !== 'authorized') workspace.leave();
+  render(); document.getElementById('workspace-status')?.focus();
+  if (state.status === 'authorized' && workspace.snapshot().workspaceId !== state.workspaceId) void workspace.load(state.workspaceId);
 }, onRedirect(destination) { window.location.hash = destination; } });
 const auth = createAuth({ async onLogin() {
   const next = new URLSearchParams(window.location.hash.split('?')[1] || '').get('next');
@@ -30,7 +42,7 @@ const api = createApi({ onChange() {
   const mode = api.snapshot().mode;
   const changed = mode !== apiMode;
   apiMode = mode;
-  if (changed || routeFromHash(window.location.hash) === 'monitoring') render();
+  if (changed || contentRoute() === 'monitoring') render();
 } });
 const history = createHistory();
 let activeHistoryId = null;
@@ -48,7 +60,7 @@ const chat = createChat({ reply: (scenario, question) => chat.snapshot().mode ==
     }
     activeHistoryId = savedId;
   }
-  const route = routeFromHash(window.location.hash);
+  const route = contentRoute();
   if (route === 'history') { render(); return; }
   if (route !== 'chat') return;
   render();
@@ -60,7 +72,7 @@ const chat = createChat({ reply: (scenario, question) => chat.snapshot().mode ==
 } });
 
 const monitoring = createMonitoring({ onChange() {
-  if (routeFromHash(window.location.hash) !== 'monitoring' || document.hidden) return;
+  if (contentRoute() !== 'monitoring' || document.hidden) return;
   const focused = document.activeElement?.id;
   render();
   if (focused?.startsWith('monitoring-')) document.getElementById(focused)?.focus();
@@ -69,7 +81,8 @@ const monitoring = createMonitoring({ onChange() {
 } });
 
 function render(moveFocus = false) {
-  const route = routeFromHash(window.location.hash);
+  const root = routeFromHash(window.location.hash);
+  const route = contentRoute();
   if (route !== 'history') historyFilter = '';
   if (activeHistoryId && !history.get(activeHistoryId)) { activeHistoryId = null; chat.clear(); }
   monitoring.setActive(route === 'monitoring' && api.snapshot().mode === 'demo' && !document.hidden);
@@ -79,8 +92,15 @@ function render(moveFocus = false) {
     const records = historyFilter ? historyState.records.filter(record => record.turns[0].question.toLowerCase().includes(historyFilter.toLowerCase())) : historyState.records;
     historyState = { ...historyState, records, total };
   }
-  const page = renderPage(route, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState, historyFilter, connectionState: api.snapshot(), authState: auth.snapshot(), protectedState: accountSession.snapshot() });
-  nav.innerHTML = navigation(route);
+  const page = renderPage(root, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState, historyFilter, connectionState: api.snapshot(), authState: auth.snapshot(), protectedState: accountSession.snapshot(), workspaceState: workspace.snapshot(), workspaceSection: workspaceSectionFromHash(window.location.hash) });
+  nav.innerHTML = root === 'workspace' ? clientNavigation(workspaceSectionFromHash(window.location.hash)) : navigation(route);
+  const data = root === 'workspace' && accountSession.snapshot().status === 'authorized' ? workspace.snapshot().data : null;
+  const label = document.getElementById('workspace-label-copy');
+  if (label) label.textContent = data?.workspace.name || (root === 'workspace' ? 'Client workspace' : 'Engineer workspace');
+  const mode = document.getElementById('workspace-mode');
+  if (mode) mode.textContent = root === 'workspace' ? 'Client beta' : 'Private preview';
+  const footer = document.getElementById('workspace-footer-state');
+  if (footer) footer.textContent = root === 'workspace' ? data ? 'Authorized account data · Demo tools only' : 'Client workspace access pending' : 'No backend connected · Read-only foundation';
   // Renderers contain trusted templates; all dynamic text is escaped in ui.js.
   main.innerHTML = page.html;
   main.classList.toggle('landing-page', route === 'home');
@@ -90,7 +110,9 @@ function render(moveFocus = false) {
   nav.classList.remove('is-open');
   if (moveFocus) main.focus();
   document.querySelector('#account-refresh')?.addEventListener('click', () => { void accountSession.load(); });
+  document.querySelector('#workspace-retry')?.addEventListener('click', () => { void workspace.load(accountSession.snapshot().workspaceId); });
   document.querySelector('#account-logout')?.addEventListener('click', () => {
+    workspace.leave();
     activeHistoryId = null; chat.clear(); monitoring.setActive(false); api.disconnect('demo');
     void accountSession.logout();
   });
@@ -171,7 +193,7 @@ function render(moveFocus = false) {
     restoringHistory = true;
     chat.restore(record.turns);
     restoringHistory = false;
-    window.location.hash = '/chat';
+    window.location.hash = root === 'workspace' ? '/workspace/demo-chat' : '/chat';
   }));
   document.querySelectorAll('[data-delete-history]').forEach(button => button.addEventListener('click', () => {
     history.remove(button.dataset.deleteHistory);
@@ -222,13 +244,13 @@ document.addEventListener('keydown', event => {
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) refreshHistory();
-  monitoring.setActive(routeFromHash(window.location.hash) === 'monitoring' && api.snapshot().mode === 'demo' && !document.hidden);
-  if (!document.hidden && routeFromHash(window.location.hash) === 'monitoring') render();
+  monitoring.setActive(contentRoute() === 'monitoring' && api.snapshot().mode === 'demo' && !document.hidden);
+  if (!document.hidden && contentRoute() === 'monitoring') render();
 });
 
 function refreshHistory() {
   if (document.hidden) return;
-  const route = routeFromHash(window.location.hash);
+  const route = contentRoute();
   if (activeHistoryId && !history.get(activeHistoryId)) { activeHistoryId = null; chat.clear(); }
   if (route === 'history') render();
 }
@@ -237,9 +259,17 @@ window.addEventListener('storage', event => {
 });
 setInterval(refreshHistory, 60000);
 
+let previousRoot = routeFromHash(window.location.hash);
 window.addEventListener('hashchange', () => {
+  const nextRoot = routeFromHash(window.location.hash);
+  const enteringClient = nextRoot === 'workspace' && previousRoot !== 'workspace';
+  previousRoot = nextRoot;
   auth.leave();
   accountSession.leave();
+  workspace.leave();
+  if (enteringClient) {
+    activeHistoryId = null; api.disconnect('demo'); chat.setMode('demo');
+  }
   render(true);
   if (isAuthRoute()) void auth.load();
   if (routeFromHash(window.location.hash) === 'workspace') void accountSession.load();

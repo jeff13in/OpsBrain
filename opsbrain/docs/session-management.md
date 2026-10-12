@@ -75,8 +75,9 @@ immediately even if provider logout fails; other devices are unchanged. Existing
 provider access JWTs can remain usable until their independent expiry.
 
 The browser's guarded #/workspace route resolves a verified server session before
-showing its gate. Anonymous/unverified users go to login/verification. No workspace
-tools or private content are implemented by the gate. A successful login response
+showing client content. Anonymous/unverified users go to login/verification.
+OPU-96 now adds the workspace shell, authorized summary reads and embedded demo
+tools after this gate; account persistence remains later work. A successful login response
 now triggers a fresh session check before choosing an allowlisted destination
 (Workspace or Home). Navigation/account logout clears protected page memory,
 aborts requests and rejects stale replies. Logout clears the display before the
@@ -94,7 +95,7 @@ CSRF bootstrap, rate limits, one-time verification/recovery, account-wide recove
 revocation and safe callback parameter removal before enabling client signup.
 
 Complete OPU-93 provider/database/SMTP/host setup, OPU-94 live email acceptance,
-OPU-96 workspace tools and OPU-97 persistence. Verify real restart/replica refresh
+OPU-96 hosted workspace acceptance and OPU-97 persistence. Verify real restart/replica refresh
 races, provider outages, role grants, key rotation, backup/restore, email journeys,
 browser/mobile and assistive-technology behavior. Production ingress must keep
 old unauthenticated /ask and specialist routes private; this new boundary does

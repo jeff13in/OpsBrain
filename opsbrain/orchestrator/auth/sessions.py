@@ -23,6 +23,10 @@ class ProviderUnavailable(Exception):
     """Provider access failed safely; do not destroy a session on outages."""
 
 
+class WorkspaceUnavailable(Exception):
+    """The requested workspace is not accessible."""
+
+
 @dataclass
 class SessionRecord:
     session_hash: str
@@ -195,3 +199,18 @@ class SessionManager:
                 self.provider.logout(access)
             except (InvalidIdentity, ProviderUnavailable):
                 pass
+
+    def workspace_summary(self, cookie, workspace_id):
+        principal = self.authenticate(cookie)
+        if principal is None:
+            raise InvalidIdentity()
+        if workspace_id not in principal.workspace_ids:
+            raise WorkspaceUnavailable()
+        with self.store.locked(self.cookie_hash(cookie)) as slot:
+            # Logout between authentication and this read must not revive access.
+            record = slot[0]
+            now = int(self.clock())
+            if record is None or now >= record.expires_at or now - record.last_seen_at >= self.idle_seconds:
+                raise InvalidIdentity()
+            access, _ = self._tokens(record)
+            return self.provider.workspace_summary(access, principal.user_id, workspace_id)

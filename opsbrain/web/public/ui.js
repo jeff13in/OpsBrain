@@ -1,5 +1,6 @@
 import { HISTORY_TTL } from './history.js';
 import { AUTH_ROUTES } from './auth.js';
+import { WORKSPACE_SECTIONS } from './workspace.js';
 import { DEMO_FIXTURE, DEMO_STATES, demoState } from './demo.js';
 import { CHAT_SCENARIOS } from './chat.js';
 import { METRICS, MONITORING_RANGES, MONITORING_SCENARIOS } from './monitoring.js';
@@ -64,6 +65,11 @@ export function landingSectionFromHash(hash) {
 
 export function navigation(active) {
   return ROUTES.filter(route => !route.hidden).map(route => `<a href="#/${route.id}" ${active === route.id ? 'aria-current="page"' : ''}>${icon(route.icon)}<span>${route.title}</span>${route.ticket ? '<span class="nav-next">NEXT</span>' : ''}</a>`).join('');
+}
+
+export function clientNavigation(section) {
+  const active = section?.startsWith('demo-') ? 'tools' : section;
+  return WORKSPACE_SECTIONS.map(item => `<a href="#/workspace/${item.id}" ${active === item.id ? 'aria-current="page"' : ''}>${icon(item.icon)}<span>${item.title}</span></a>`).join('');
 }
 
 export function agentCard(agent) {
@@ -241,10 +247,7 @@ function liveDashboardPage(state) {
 
 export function renderPage(id, options = {}) {
   if (AUTH_ROUTES.some(route => route.id === id)) return authPage(id, options.authState);
-  if (id === 'workspace') {
-    const state = options.protectedState || { status: 'checking', message: 'Checking account access…' };
-    return { title: 'Workspace', html: `<section class="auth-page"><div class="panel auth-panel"><p class="eyebrow">YOUR OPSBRAIN ACCOUNT</p><h1>Workspace</h1><p id="workspace-status" role="status" tabindex="-1">${escapeHtml(state.message)}</p>${state.status === 'authorized' ? '<p>Your workspace tools are being prepared.</p><button id="account-logout" class="button secondary" type="button">Log out</button>' : state.status === 'checking' ? '' : '<button id="account-refresh" class="button secondary" type="button">Check account access</button><a class="auth-back" href="#/login">Log in</a>'}</div></section>` };
-  }
+  if (id === 'workspace') return clientWorkspace(options);
   const connection = options.connectionState;
   let page;
   if (connection && connection.mode !== 'demo' && id === 'chat') page = { title: 'Ask OpsBrain', html: liveChatPage(options.chatState || { turns: [], pending: false, draft: '', validation: '' }, connection) };
@@ -252,6 +255,33 @@ export function renderPage(id, options = {}) {
   else if (connection && connection.mode !== 'demo' && id === 'dashboard') page = { title: 'Overview', html: liveDashboardPage(connection) };
   else page = renderContent(id, options);
   return { ...page, html: (connection ? connectionControls(connection) : '') + page.html };
+}
+
+function clientWorkspace(options) {
+  const guard = options.protectedState || { status: 'checking', message: 'Checking account access…' };
+  const state = options.workspaceState || { status: 'idle', data: null };
+  const section = options.workspaceSection || 'dashboard';
+  const title = WORKSPACE_SECTIONS.find(item => item.id === section)?.title || ({ 'demo-chat': 'Demo chat', 'demo-monitoring': 'Demo monitoring', 'demo-history': 'Demo history' })[section] || 'Dashboard';
+  if (guard.status !== 'authorized') return { title: 'Workspace', html: `<section class="auth-page"><div class="panel auth-panel"><p class="eyebrow">YOUR OPSBRAIN ACCOUNT</p><h1>Workspace</h1><p id="workspace-status" role="status" tabindex="-1">${escapeHtml(guard.message)}</p>${guard.status === 'checking' ? '' : '<button id="account-refresh" class="button secondary" type="button">Check account access</button><a class="auth-back" href="#/login">Log in</a>'}</div></section>` };
+  const data = state.status === 'ready' && state.workspaceId === guard.workspaceId && state.data?.workspace.id === guard.workspaceId ? state.data : null;
+  const header = `<div class="client-header"><div><p class="eyebrow">${data ? escapeHtml(data.workspace.name) : 'YOUR CLIENT WORKSPACE'}</p><h1>${title}</h1><p id="workspace-status" class="form-help" role="status" tabindex="-1">${escapeHtml(guard.message)}</p></div><details class="account-menu"><summary>Account</summary><div><a href="#/workspace/settings">Account settings</a><a href="#/workspace/help">Help & support</a><button id="account-logout" class="button secondary" type="button">Log out</button></div></details></div>`;
+  if (!data) return { title, html: header + `<section class="panel client-panel"><p id="workspace-data-status" role="status" tabindex="-1">${state.status === 'error' ? escapeHtml(state.message) : 'Loading your workspace…'}</p>${state.status === 'error' ? '<button id="workspace-retry" class="button secondary" type="button">Retry workspace</button>' : ''}</section>` };
+  const projects = data.recent_projects;
+  const projectList = projects.length ? `<ul class="client-project-list">${projects.map(row => `<li><div><strong>${escapeHtml(row.title)}</strong><span class="form-help">Updated <time datetime="${escapeHtml(row.updated_at)}">${escapeHtml(new Date(row.updated_at).toISOString().slice(0, 16).replace('T', ' '))} UTC</time></span></div><span class="small-label">PROJECT · READ ONLY</span></li>`).join('')}</ul>` : emptyState('No projects yet', 'Your account has no recent projects. Project creation and saved investigations are not available yet.', 'book');
+  const unavailable = (headingText, body) => `<section class="panel client-panel"><h2>${headingText}</h2><p>${body}</p></section>`;
+  let body;
+  if (section === 'dashboard') body = `<section class="panel client-welcome"><p class="eyebrow">A PLACE FOR YOUR INVESTIGATIONS</p><h2>Welcome back${data.profile.display_name ? `, ${escapeHtml(data.profile.display_name)}` : ''}.</h2><p>Your workspace keeps projects and account details together.</p><div class="button-row"><a class="button primary" href="#/workspace/tools">Explore software tools</a><a class="button secondary" href="#/workspace/projects">Projects & saved work</a></div></section><div class="client-grid"><section class="panel client-panel"><div class="panel-heading"><h2>Recent projects</h2><a href="#/workspace/projects">View projects</a></div>${projectList}</section>${unavailable('Current availability', 'Account and project information comes from your authorized workspace. Demo tools use synthetic data. Live operational integrations and saved-work editing are unavailable.')}</div>`;
+  else if (section === 'tools') body = `<section class="panel client-panel"><h2>Explore with demo data</h2><p>These examples use synthetic data. Questions stay in this browser; they are not sent to live agents.</p><div class="client-tool-grid"><a href="#/workspace/demo-chat" class="client-tool"><strong>Demo chat</strong><span>Example answers, citations and agent outcomes</span>${badge('demo')}</a><a href="#/workspace/demo-monitoring" class="client-tool"><strong>Demo monitoring</strong><span>Fixed samples, charts and value tables</span>${badge('demo')}</a><a href="#/workspace/demo-history" class="client-tool"><strong>Demo history</strong><span>Browser-local conversations; 72-hour expiry</span>${badge('demo')}</a></div></section>${unavailable('Live integrations unavailable', 'Live runbooks, monitoring, infrastructure and repository tools require workspace-specific authorization before client access can be enabled.')}`;
+  else if (section === 'projects') body = `<section class="panel client-panel"><h2>Recent projects</h2><p>Up to ten recently updated projects from this workspace. Project editing is unavailable.</p>${projectList}<button class="button secondary" type="button" disabled>Create project — unavailable</button></section>${unavailable('Saved work', 'Account-backed investigations and resume/delete controls are not available yet. Demo history stays separate in this browser.')}`;
+  else if (section === 'activity') body = unavailable('Activity feed unavailable', 'A complete account activity feed is not available yet. Recent project updates below are timestamps from your workspace records.') + `<section class="panel client-panel"><h2>Recent project updates</h2>${projectList}</section>`;
+  else if (section === 'settings') body = `<section class="panel client-panel"><h2>Profile</h2><dl class="client-details"><dt>Display name</dt><dd>${escapeHtml(data.profile.display_name || 'Not set')}</dd><dt>Workspace</dt><dd>${escapeHtml(data.workspace.name)}</dd></dl><p>Profile editing is unavailable.</p></section>${unavailable('Preferences', 'Account preferences are not available yet. No settings are saved by this view.')}`;
+  else if (section === 'help') body = `<section class="panel client-panel"><h2>Using your workspace</h2><details class="client-help"><summary>What is demo data?</summary><p>Demo chat and monitoring use fixed synthetic examples. Demo history is stored only in this browser and expires after 72 hours.</p></details><details class="client-help"><summary>Why are live tools unavailable?</summary><p>Each integration needs workspace-specific authorization. Sign-in alone does not grant access to shared operational sources.</p></details><details class="client-help"><summary>How is saved work retained?</summary><p>Account saved-work tools are not available yet. When enabled, saved investigations remain until you delete them. Browser demo history has its separate expiry.</p></details><details class="client-help"><summary>How do I get support?</summary><p>Contact the person who approved your beta access. In-app support messaging is not available.</p></details><a class="button secondary" href="#/workspace/settings">Account settings</a></section>`;
+  else {
+    const child = section === 'demo-chat' ? chatPage(options.chatState, options.historyState) : section === 'demo-monitoring' ? monitoringPage(options.monitoringState) : historyPage(options.historyState, options.historyFilter);
+    body = `<p class="client-demo-notice">Demo only · synthetic examples · browser-local history · no live operational access</p><a class="auth-back" href="#/workspace/tools">← All software tools</a>` + child.replace(/<h1\b/g, '<h2').replace(/<\/h1>/g, '</h2>');
+    if (section === 'demo-history') body = body.replace(/href="#\/chat"/g, 'href="#/workspace/demo-chat"');
+  }
+  return { title, html: `<div class="client-workspace">${header}${body}</div>` };
 }
 
 function authPage(id, state = {}) {

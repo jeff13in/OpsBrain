@@ -70,7 +70,7 @@ and its independent protection remain pending in OPU-91.
 
 ## Safety and limits
 
-The build copies exactly twelve public assets, including the account UI and guard modules,
+The build copies exactly thirteen public assets, including the account, guard and workspace modules,
 not the backend/environment tree.
 Unknown existing build outputs cause a failure instead of deleting user files.
 Never put provider keys, database credentials, access tokens or private
@@ -319,8 +319,8 @@ desktop/mobile visual and assistive-technology acceptance remain open.
 
 `#/workspace` resolves the same-origin session before rendering its account gate.
 Anonymous visitors go to login; unverified visitors go to verification. Missing
-or malformed membership/session responses cannot authorize the route. Workspace
-tools are still OPU-96 work. After login success, a second session check resolves
+or malformed membership/session responses cannot authorize the route. The OPU-96
+workspace shell and embedded demo tools are now implemented locally. After login success, a second session check resolves
 the authorized workspace. Post-login destinations allow only Workspace or Home.
 
 Logout clears the gate immediately, posts CSRF-protected server revocation, then
@@ -331,3 +331,28 @@ The existing engineer API adapter remains credential-omitting; this new boundary
 uses same-origin cookies. Production ingress must keep the old engineer/agent
 APIs private. See [session setup and remaining gates](../docs/session-management.md).
 Client live operational access requires verified workspace isolation.
+
+## OPU-96 client workspace
+
+The client shell uses the existing sidebar, top bar, visual tokens and mobile
+menu. Account settings/help/logout are reachable through a native keyboard-
+accessible account menu. Six main sections resolve under `#/workspace/`:
+dashboard, tools, projects, activity, settings and help. Nested demo-chat,
+demo-monitoring and demo-history reuse the existing controllers and stay inside
+the client shell. They expose no live connection controls. Entering the client
+workspace disconnects the engineer live adapter and clears the active composer.
+
+The workspace/profile names and up to ten recent projects are read from the new
+same-origin `/api/workspaces/{uuid}/summary` endpoint after session authorization.
+The backend uses the user's provider token and RLS for each read, validates record
+scope and returns no-store responses. Requests are bounded; failed/expired reads,
+navigation and logout clear private data instead of retaining a previous user's
+view. No mock personalization is supplied when the backend is absent.
+
+Projects are read-only. Profile/preferences editing, account saved work and the
+complete activity feed show explicit unavailable states until persistence work
+ships. Help uses built-in explanations and the existing beta access owner; it
+does not invent a support email or send messages. Live integrations stay gated.
+The static preview still lacks real provider sign-in. See
+[the workspace UI contract](../docs/client-workspace-ui.md) and
+[OPU-96 evidence](../validation/OPU-96.md) for current verification and open gates.

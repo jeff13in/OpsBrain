@@ -73,6 +73,11 @@ class ProviderFixture:
         if self.fail:
             raise self.fail()
 
+    def workspace_summary(self, access, user_id, workspace_id):
+        return {'workspace': {'id': workspace_id, 'name': 'My workspace'},
+                'profile': {'display_name': 'Client A'}, 'recent_projects': [],
+                'capabilities': {'project_writes': False, 'preferences': False, 'activity': False, 'live_tools': False}}
+
 
 @pytest.fixture
 def setup():
@@ -225,6 +230,54 @@ def client(setup):
 def test_anonymous_private_requests_are_denied(client):
     assert client.get('/api/auth/session').status_code == 401
     assert client.get(f'/api/workspaces/{WORKSPACE}/session').status_code == 401
+    assert client.get(f'/api/workspaces/{WORKSPACE}/summary').status_code == 401
+
+
+def test_workspace_summary_is_membership_scoped_and_no_store(client, setup):
+    _, _, _, _, _, cookie, _ = setup
+    client.cookies.set('__Host-opsbrain_session', cookie)
+    response = client.get(f'/api/workspaces/{WORKSPACE}/summary')
+    assert response.status_code == 200
+    assert response.headers['cache-control'] == 'no-store'
+    assert response.json()['profile']['display_name'] == 'Client A'
+    assert client.get(f'/api/workspaces/{OTHER}/summary').status_code == 404
+    assert 'secret-access' not in response.text
+
+
+def test_summary_provider_reads_profile_projects_with_user_jwt_and_validates_scope():
+    calls = []
+    def respond(request):
+        calls.append(request)
+        if request.url.path == '/rest/v1/workspaces':
+            return httpx.Response(200, json=[{'id': WORKSPACE, 'name': 'My workspace'}])
+        if request.url.path == '/rest/v1/profiles':
+            return httpx.Response(200, json=[{'user_id': USER, 'display_name': 'Client A'}])
+        return httpx.Response(200, json=[{'id': OTHER, 'workspace_id': WORKSPACE, 'title': 'Incident review',
+                                        'updated_at': '2026-10-12T12:00:00+00:00', 'version': 1}])
+    provider = SupabaseProvider('https://provider.example.test', 'sb_publishable_synthetic', transport=httpx.MockTransport(respond))
+    data = provider.workspace_summary('scoped-user-token', USER, WORKSPACE)
+    assert data['recent_projects'][0]['title'] == 'Incident review'
+    assert all(request.headers['authorization'] == 'Bearer scoped-user-token' for request in calls)
+    assert calls[0].url.params['id'] == f'eq.{WORKSPACE}'
+    assert calls[1].url.params['user_id'] == f'eq.{USER}'
+    assert calls[2].url.params['workspace_id'] == f'eq.{WORKSPACE}'
+    assert calls[2].url.params['limit'] == '10'
+
+
+@pytest.mark.parametrize('bad_scope', ['profile', 'project'])
+def test_summary_rejects_mismatched_provider_rows(bad_scope):
+    def respond(request):
+        if request.url.path == '/rest/v1/workspaces':
+            body = [{'id': WORKSPACE, 'name': 'My workspace'}]
+        elif request.url.path == '/rest/v1/profiles':
+            body = [{'user_id': OTHER if bad_scope == 'profile' else USER, 'display_name': 'Client'}]
+        else:
+            body = [{'id': OTHER, 'workspace_id': OTHER if bad_scope == 'project' else WORKSPACE,
+                     'title': 'Project', 'updated_at': '2026-10-12T12:00:00Z', 'version': 1}]
+        return httpx.Response(200, json=body)
+    provider = SupabaseProvider('https://provider.example.test', 'key', transport=httpx.MockTransport(respond))
+    with pytest.raises(ProviderUnavailable):
+        provider.workspace_summary('token', USER, WORKSPACE)
 
 
 def test_session_response_contains_only_safe_state_and_authorized_workspace(client, setup):

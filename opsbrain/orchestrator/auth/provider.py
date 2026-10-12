@@ -5,7 +5,11 @@ from uuid import UUID
 
 import httpx
 
-from orchestrator.auth.sessions import InvalidIdentity, ProviderUnavailable
+from orchestrator.auth.sessions import (
+    InvalidIdentity,
+    ProviderUnavailable,
+    WorkspaceUnavailable,
+)
 
 
 class SupabaseProvider:
@@ -65,3 +69,39 @@ class SupabaseProvider:
 
     def logout(self, access):
         self._request('POST', '/auth/v1/logout?scope=local', access=access)
+
+    def workspace_summary(self, access, user_id, workspace_id):
+        user_id, workspace_id = str(UUID(user_id)), str(UUID(workspace_id))
+        workspaces = self._request('GET', f'/rest/v1/workspaces?select=id,name&id=eq.{workspace_id}&limit=1', access=access)
+        if not isinstance(workspaces, list) or len(workspaces) != 1:
+            raise WorkspaceUnavailable()
+        profiles = self._request('GET', f'/rest/v1/profiles?select=user_id,display_name&user_id=eq.{user_id}&limit=1', access=access)
+        projects = self._request('GET', '/rest/v1/projects?select=id,workspace_id,title,updated_at,version'
+                                 f'&workspace_id=eq.{workspace_id}&order=updated_at.desc,id.asc&limit=10', access=access)
+        try:
+            workspace = workspaces[0]
+            if str(UUID(workspace['id'])) != workspace_id or not isinstance(workspace['name'], str) or not 0 < len(workspace['name'].strip()) <= 120:
+                raise ProviderUnavailable()
+            if not isinstance(profiles, list) or len(profiles) > 1:
+                raise ProviderUnavailable()
+            profile = profiles[0] if profiles else {'user_id': user_id, 'display_name': ''}
+            if str(UUID(profile['user_id'])) != user_id or not isinstance(profile['display_name'], str) or len(profile['display_name']) > 120:
+                raise ProviderUnavailable()
+            if not isinstance(projects, list) or len(projects) > 10:
+                raise ProviderUnavailable()
+            recent = []
+            for project in projects:
+                if (str(UUID(project['workspace_id'])) != workspace_id or not isinstance(project['title'], str)
+                    or not 0 < len(project['title'].strip()) <= 200 or type(project['version']) is not int
+                    or not 0 < project['version'] <= 9007199254740991):
+                    raise ProviderUnavailable()
+                updated = datetime.fromisoformat(project['updated_at'])
+                if updated.tzinfo is None:
+                    raise ProviderUnavailable()
+                recent.append({'id': str(UUID(project['id'])), 'title': project['title'],
+                               'updated_at': updated.isoformat(), 'version': project['version']})
+            return {'workspace': {'id': workspace_id, 'name': workspace['name']},
+                    'profile': {'display_name': profile['display_name']}, 'recent_projects': recent,
+                    'capabilities': {'project_writes': False, 'preferences': False, 'activity': False, 'live_tools': False}}
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ProviderUnavailable() from exc

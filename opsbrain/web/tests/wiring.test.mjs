@@ -316,3 +316,47 @@ test('protected workspace verifies session and logout clears display before serv
   assert.equal(call.options.method, 'POST');
   assert.equal(call.options.headers['X-CSRF-Token'], 'b'.repeat(32));
 });
+
+const workspaceId = '00000000-0000-4000-8000-000000000002';
+function prepareWorkspace() {
+  responses['/api/auth/session'] = { authenticated: true, verified: true, signup_enabled: false, recovery_allowed: false,
+    csrf_token: 'b'.repeat(32), user_id: '00000000-0000-4000-8000-000000000001', workspace_ids: [workspaceId] };
+  responses[`/api/workspaces/${workspaceId}/summary`] = { workspace: { id: workspaceId, name: 'Client workspace A' },
+    profile: { display_name: 'Client A' }, recent_projects: [],
+    capabilities: { project_writes: false, preferences: false, activity: false, live_tools: false } };
+}
+
+test('client shell loads authorized personalization and every main section is reachable', async () => {
+  prepareWorkspace();
+  for (const section of ['dashboard', 'tools', 'projects', 'activity', 'settings', 'help']) {
+    windowStub.location.hash = `#/workspace/${section}`; windowStub.dispatch('hashchange'); await settle();
+    assert.match(main.innerHTML, /Client workspace A/);
+    assert.doesNotMatch(main.innerHTML, /id="connect-live"/);
+    assert.ok(documentStub.getElementById('account-logout')?.listeners.get('click')?.length);
+  }
+});
+
+test('client demo chat works inside the shell without a live request', async () => {
+  windowStub.location.hash = '#/workspace/demo-chat'; windowStub.dispatch('hashchange'); await settle();
+  const before = fetchCalls.length;
+  documentStub.getElementById('chat-question').value = 'Why is the website slow?';
+  documentStub.getElementById('chat-scenario').value = 'ok';
+  fire(documentStub.getElementById('chat-question'), 'keydown', { key: 'Enter', ctrlKey: true });
+  await settle(600);
+  assert.match(main.innerHTML, /Example answer/);
+  assert.match(main.innerHTML, /Client workspace A/);
+  assert.equal(fetchCalls.length, before, 'demo answer makes no live API request');
+  windowStub.location.hash = '#/workspace/demo-monitoring'; windowStub.dispatch('hashchange'); await settle();
+  assert.ok(documentStub.getElementById('monitoring-refresh')?.listeners.get('click')?.length);
+  windowStub.location.hash = '#/workspace/demo-history'; windowStub.dispatch('hashchange'); await settle();
+  assert.match(main.innerHTML, /browser-local history/);
+});
+
+test('workspace read failure clears personalization and retry restores authorized data', async () => {
+  delete responses[`/api/workspaces/${workspaceId}/summary`];
+  windowStub.location.hash = '#/workspace/dashboard'; windowStub.dispatch('hashchange'); await settle();
+  assert.doesNotMatch(main.innerHTML, /Client workspace A|Welcome back, Client A/);
+  assert.match(main.innerHTML, /could not be loaded/);
+  prepareWorkspace(); fire(documentStub.getElementById('workspace-retry'), 'click'); await settle();
+  assert.match(main.innerHTML, /Welcome back, Client A/);
+});

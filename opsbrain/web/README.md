@@ -383,3 +383,28 @@ command; conflicts require a reload. Deleted IDs cannot be recreated by old
 retries. Records and pending commands clear on navigation/logout. This increment
 adds no fake save fallback or browser storage for account records.
 See [persistence contracts, limits and deletion](../docs/workspace-persistence.md).
+
+
+## Investigation reports and source passages (OPU-108/109)
+
+Completed Demo and engineer Live chats have **Download Markdown report**.
+Reopened account investigations also have that control. Empty conversations and
+pending replies cannot export. Reports include displayed questions/answers,
+ordered source labels, routing when present, and agent status/error/latency when
+provided. Output uses literal text blocks, a fixed filename and a 2 MiB byte
+limit. The download stays on the device, performs no network operation and does
+not save or extend history. Only displayed fields are included; hidden model
+context is excluded. Reports label Demo/Live provenance and partial failures.
+Deleting a saved investigation does not remove a previously downloaded file.
+
+Citation buttons now open and focus inline source details; native disclosure
+controls support keyboard open/close. The fixed example latency runbook has a
+labelled synthetic passage with a fixture revision. Other demo sources and Live
+source labels explicitly report passage unavailability. No filesystem path or
+URL is resolved from a source label. An authenticated, tenant-scoped live passage
+service remains OPU-109 work; no guessed passages are displayed.
+
+OPU-106 (service readiness) and OPU-107 (real monitoring series) are queued in
+Week 4. Hosted setup remains deferred in OPU-105. See
+[the additions record](../validation/website-additions.md) for local validation
+and remaining browser/live gates.

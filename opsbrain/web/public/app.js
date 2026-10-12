@@ -1,3 +1,5 @@
+import { downloadInvestigation } from './investigation.js';
+import { openSourceTarget } from './sources.js';
 import { createApi } from './api.js';
 import { AUTH_ROUTES, createAuth } from './auth.js';
 import { createProtectedSession, safePostLoginDestination } from './route-guards.js';
@@ -216,6 +218,17 @@ function render(moveFocus = false) {
   document.querySelector('#monitoring-reset')?.addEventListener('click', () => {
     void monitoring.select('populated', document.querySelector('#monitoring-range')?.value || '15m');
   });
+  for (const [id, getState] of [
+    ['export-investigation', () => chat.snapshot()],
+    ['export-saved-investigation', () => { const state = persistence.snapshot(); return { mode: 'demo', pending: state.pending, turns: state.selected?.payload.turns }; }],
+  ]) document.getElementById(id)?.addEventListener('click', () => {
+    try {
+      downloadInvestigation(getState());
+      document.querySelector('#announcement').textContent = 'Markdown report download requested. Saved history is unchanged.';
+    } catch {
+      document.querySelector('#announcement').textContent = 'Report unavailable. Complete the conversation and try again.';
+    }
+  });
   document.querySelector('#clear-chat')?.addEventListener('click', () => { activeHistoryId = null; api.newSession(); chat.clear(); });
   document.querySelectorAll('[data-open-history]').forEach(button => button.addEventListener('click', () => {
     const record = history.get(button.dataset.openHistory);
@@ -241,8 +254,7 @@ function render(moveFocus = false) {
   document.querySelectorAll('[data-source-target]').forEach(button => {
     button.addEventListener('click', () => {
       const target = document.getElementById(button.dataset.sourceTarget);
-      target?.scrollIntoView({ block: 'nearest' });
-      target?.focus({ preventScroll: true });
+      openSourceTarget(target);
     });
   });
   document.querySelector('#draft-form')?.addEventListener('submit', event => {

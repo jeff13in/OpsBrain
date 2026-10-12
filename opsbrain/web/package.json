@@ -8,6 +8,6 @@
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check public/app.js && node --check public/ui.js && node --check public/demo.js && node --check public/chat.js && node --check public/monitoring.js && node --check public/history.js && node --check public/api.js && node --check public/auth.js && node --check public/route-guards.js && node --check public/workspace.js && node --check public/persistence.js && node --check scripts/gateway.mjs && node --check scripts/server.mjs"
+    "check": "node --check public/investigation.js && node --check public/sources.js && node --check public/app.js && node --check public/ui.js && node --check public/demo.js && node --check public/chat.js && node --check public/monitoring.js && node --check public/history.js && node --check public/api.js && node --check public/auth.js && node --check public/route-guards.js && node --check public/workspace.js && node --check public/persistence.js && node --check scripts/gateway.mjs && node --check scripts/server.mjs"
   }
 }

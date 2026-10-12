@@ -3,8 +3,10 @@
 Reviewed 2026-10-11 against the current `web/` implementation and the backend
 routes it uses; reconciled with the actual Linear roadmap on 2026-10-12 during OPU-92.
 OPU-92–98 now identify the seven Week 5 authentication/workspace issues.
-The former draft OPU-92–94 live-data deliverables below remain preserved as
-named follow-ups with issue IDs unassigned; they are not those Linear tickets.
+The former draft OPU-92–94 live-data deliverables are distinct from those Linear
+tickets. The readiness and time-series proposals now have OPU-106/107 identifiers.
+Account-scoped persistence is implemented by OPU-97; its hosted acceptance remains
+part of OPU-99, rather than a duplicate live-history sprint.
 
 ## Review of the existing website sprints
 
@@ -67,7 +69,7 @@ Acceptance criteria:
 Out of scope: public signup, write-capable operational actions, real monitoring
 charts, server-side conversation history and production availability claims.
 
-## Live-readiness follow-up — live dashboard and service readiness
+## OPU-106 — live dashboard and service readiness
 
 **Goal:** make Overview useful in live mode without presenting a successful
 orchestrator health check as proof that every dependency is healthy.
@@ -100,7 +102,7 @@ Acceptance criteria:
 Depends on OPU-91. Out of scope: alert mutation, restart/deploy controls and
 arbitrary health targets supplied by the browser.
 
-## Live-timeseries follow-up — live monitoring time-series
+## OPU-107 — live monitoring time-series
 
 **Goal:** replace the live page's snapshot-only view with real CPU, memory and
 latency charts while retaining partial availability and accessible tables.
@@ -132,9 +134,14 @@ Depends on OPU-91; use the Live-readiness follow-up status contract where useful
 arbitrary query consoles, dashboard editing, alert acknowledgement and long-term
 analytics storage.
 
-## Live-history follow-up — authenticated conversation history
+## Historical live-history proposal — superseded by OPU-97 and OPU-99
 
-**Goal:** let an approved engineer resume live investigations across browser
+This historical proposal is not a new ticket. OPU-97 implements account-scoped
+saved demo investigations, with retention until explicit deletion. Live client
+integrations remain gated on tenant isolation; the proposed short retention below
+is not the implemented account retention policy.
+
+**Original goal:** let an approved engineer resume live investigations across browser
 sessions without mixing identities or weakening the current retention limits.
 
 Scope:
@@ -215,3 +222,23 @@ completion. Week labels express order, not an agreed current start date.
 Live-readiness follow-up and Live-timeseries follow-up may be designed together, but they should remain separate
 review units: status/readiness and time-series queries have different contracts,
 failure modes and security limits.
+
+
+## Authorized website additions — 2026-10-12
+
+All four issues belong to Rifat in OpsBrain September Delivery Plan. Existing
+milestone target dates and Jeffin's tickets are unchanged.
+
+| Issue | Milestone | Current implementation |
+| --- | --- | --- |
+| [OPU-106](https://linear.app/opusbrain/issue/OPU-106) | Week 4 — Deploy + Ship | Backlog: aggregate readiness contract and gateway/UI implementation pending. |
+| [OPU-107](https://linear.app/opusbrain/issue/OPU-107) | Week 4 — Deploy + Ship | Backlog: bounded real time-series adapter and charts pending. |
+| [OPU-108](https://linear.app/opusbrain/issue/OPU-108) | Week 5 — Authentication & Client Workspace | Markdown export implemented locally for completed Demo/Live chat and reopened account investigations; browser download acceptance pending. |
+| [OPU-109](https://linear.app/opusbrain/issue/OPU-109) | Week 5 — Authentication & Client Workspace | First increment: accessible inline synthetic runbook passage, citation opens/focuses source, honest unavailable state for labels without passages. Authorized live source resolver and isolation tests pending. |
+
+Readiness/charts extend Week 4's operational UI. Reports and source inspection
+extend Week 5's investigation workspace. OPU-105 remains the deferred hosted
+access/API acceptance task. Local implementation may proceed before that gate;
+no hosted setup was changed. OPU-106/107 remain queued while the first local
+OPU-108/109 increment is verified. Details and evidence are in
+[website additions validation](website-additions.md).

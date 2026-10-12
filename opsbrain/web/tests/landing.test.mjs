@@ -75,7 +75,7 @@ test('landing headings and example use semantic HTML and labelled sections', () 
 test('static entry metadata and responsive rules support the landing', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
-  assert.match(html, /Local two-engineer preview; no backend connected/);
+  assert.match(html, /Local two-engineer demo with static fixtures; no backend connected/);
   assert.match(css, /\.landing-hero \{ grid-template-columns: 1fr/);
   assert.match(css, /\.specialist-grid, \.scope-grid, \.workflow-steps \{ grid-template-columns: 1fr/);
   assert.doesNotMatch(css, /(?:^|\} )nav \{ display: none/);

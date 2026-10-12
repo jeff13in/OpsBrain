@@ -9,5 +9,5 @@ const gateway = process.env.OPSBRAIN_WEB_API === '1' ? createGateway({
 }) : undefined;
 const server = createPreviewServer(undefined, { gateway });
 server.on('error', error => { console.error(`Preview failed: ${error.code || 'server error'}`); process.exitCode = 1; });
-server.listen(port, '127.0.0.1', () => console.log(`OpsBrain local foundation: http://127.0.0.1:${port}/ (no backend connected)`));
+server.listen(port, '127.0.0.1', () => console.log(`OpsBrain demo preview: http://127.0.0.1:${port}/ (static fixtures; no backend connected)`));
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.close());

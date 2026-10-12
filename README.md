@@ -22,7 +22,7 @@ for OPU-84–91 status and the proposed OPU-92–94 follow-ups.
 
 | Branch | What it is |
 |---|---|
-| `joint` | Shared development from `rifat-updated`, including OPU-60/61. CI does not yet run on pushes/PRs into this branch (OPU-52 finding R1). |
+| `joint` | Shared development from `rifat-updated`, including OPU-60/61. CI includes matching pushes and PRs into this branch; image publication remains limited to `main`/`jeffin-dev`. |
 | `jeffin-dev` | Integration source branch; configured CI runs on matching pushes here |
 | `rifat-updated` | Source for `joint`: merged Groq migration, observability, agent integrations and pipeline fixes |
 | `main` | Stable branch, last updated from `jeffin-dev` via PR #1 (Sept 8), plus a title rename on Oct 2. Behind `jeffin-dev` |
@@ -301,9 +301,10 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/pytest tests/
 .venv/bin/ruff check agents/ orchestrator/ shared/
 ```
-CI runs the same two commands on every push to `main` or `jeffin-dev` (and on PRs
-into `main`), and a failing test fails the build. It does not run on `joint`
-pushes or PRs into `joint`. The latest recorded combined regression run was
+CI runs the same two commands on matching pushes to `main`, `jeffin-dev`, or
+`joint`, and on matching PRs into `main` or `joint`; a failing test fails the
+build. The path filter includes `opsbrain/**` and the workflow itself, so
+root-only README edits do not trigger it. The latest recorded combined regression run was
 217 passed with the opt-in database test configured; see
 [`opsbrain/validation/OPU-61.md`](opsbrain/validation/OPU-61.md).
 

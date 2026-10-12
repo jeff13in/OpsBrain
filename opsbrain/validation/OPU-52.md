@@ -47,7 +47,7 @@ an explicit operating limitation requiring a follow-up decision.
 
 | ID / priority | Evidence and impact | Suggested owner / next step |
 | --- | --- | --- |
-| R1 / P1 | [CI `on`](../../.github/workflows/ci-cd.yml): pushes only `main`/`jeffin-dev`; PRs only target `main`. `joint` pushes/PRs into `joint` do not trigger this workflow. Root-only README edits are outside the paths filter. | Shared/CI: add agreed collaboration-branch test/build gates and verify an actual run without broadening deployment triggers accidentally. |
+| R1 / P1, partially resolved on re-review | [CI `on`](../../.github/workflows/ci-cd.yml) now includes `joint` pushes and PRs into `joint`, alongside `main`/`jeffin-dev` pushes and PRs into `main`. Root-only README edits remain outside the paths filter. Image publication is still limited to `main`/`jeffin-dev`, deployment to `main`. | Shared/CI: verify an actual collaboration-branch test/build run; decide whether root documentation should trigger checks. The original missing-branch finding no longer applies. |
 | R2 / P1 | [CI](../../.github/workflows/ci-cd.yml) publishes GHCR SHA/`latest`; [manifests](../k8s/orchestrator.yaml) use placeholder ECR `latest`. Both `main` and `jeffin-dev` can overwrite GHCR `latest`. | Deployment / OPU-54-55: align registry/pull access and immutable promotion tags across manifests/Helm; test clean deployment. |
 | R3 / P1 | [Code mutation routes](../agents/code/main.py) lack application auth; Compose publishes agent ports. Kafka clients lack configured TLS/SASL/ACLs. Correlation is not authorization. | Shared/deployment: protect ingress and rerun/dispatch, keep agent/broker access private, use least privilege before public exposure. |
 | R4 / P1 | [Deploy step](../../.github/workflows/ci-cd.yml) uses `curl -s`, prints HTTP status and does not fail on HTTP errors. ArgoCD 401/403/500 can leave the shell step successful; no sync/health wait certifies deployment. | CI/GitOps / OPU-55: enforce HTTP failure and wait for sync/health; test rejected and successful paths. |
@@ -97,9 +97,52 @@ database connection. No new live/backend acceptance is implied by this run.
 No service restart/rebuild, external model call, ingestion, secret edit, cloud
 operation, GitHub approval, commit or push was performed for this task.
 
-Review/documentation deliverables are ready for shared review. OPU-51, the stated
-full-pipeline dependency, remains **In Review**, so OPU-52 remains **In Review**
-instead of implying full production acceptance. To close Cycle 3, reviewers must
+Review/documentation deliverables are ready for shared review. The recorded
+issue snapshot had OPU-51, the stated full-pipeline dependency, and OPU-52
+**In Review**; this is historical evidence, not a fresh Linear status check.
+To close Cycle 3, reviewers must
 accept the documented limited live coverage/deferred backends or finish the
 missing backend checks, then close OPU-51 and approve this handoff. Week 4 findings
 are recommendations here; unrelated issues were not modified.
+
+## Independent re-review: October 11, 2026 (America/Toronto)
+
+Reviewed current `joint` at `fd9b254b16a0c71e9c403d37fee34b3e461cc6bd`,
+with documentation corrections only. The original `be782a3` evidence above
+is retained separately from these fresh checks.
+
+- Re-read the architecture and contract against the shared Kafka worker/bus,
+  wire serialization, orchestrator routing/fan-out/aggregation, model factory,
+  session memory, agent boundaries, Compose and Kubernetes/CI configuration.
+- Retrieved GitHub PRs #1–3 through the GitHub connector and confirmed all three
+  are merged. Their historical integration provenance matches the review scope;
+  merged PRs do not certify the current cluster or external backends.
+- Corrected R1 and the root README: CI now includes `joint` pushes and PRs.
+  Root-only documentation is still outside the path filter. The connector's
+  PR-triggered workflow lookup returned no runs for this baseline; it does not
+  report push-triggered runs, so current CI success remains unverified.
+- R2–R10 remain supported by current source. They are Week 4 operating/release
+  follow-ups, not undocumented changes required by this documentation task.
+
+| Fresh check | Result |
+| --- | --- |
+| Python 3.12.9, temporary virtual environment; `python -m pytest tests -q` | **216 passed, 1 skipped**, 29.28s; 219 upstream warnings |
+| `ruff check agents orchestrator shared scripts tests` | Passed |
+| Node 23.9.0; frontend `npm test` | **76 passed**, no skips |
+| Frontend `npm run check` and `npm run build` | Passed; 10 allowlisted static assets |
+| Local Markdown links across the six review/entry-point documents | **67 checked**, all targets exist; external URLs and heading anchors excluded |
+| `git diff --check` | Passed |
+
+The skipped Python test requires `RAG_TEST_DATABASE_URL`. Frontend tests initially
+hit sandbox restrictions on binding loopback ports; all passed on the authorized
+rerun. No current database, real broker, model-provider, AWS, Kubernetes or
+selected-repository acceptance was performed. Historical live evidence remains
+explicitly limited as described above.
+
+**Verdict:** the integration/documentation review passes after correcting the
+stale CI statements. Cycle closure is not verified: the current Linear issue
+requirements, OPU-51 dependency status and acceptance of deferred backend
+coverage could not be checked because Linear is not connected in this session.
+OPU-52 was not marked Done. No GitHub approval, commit, push or deployment was
+performed. Install/connect Linear to verify the current closeout conditions and
+update OPU-52 if they are satisfied.

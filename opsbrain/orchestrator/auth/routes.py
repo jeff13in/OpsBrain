@@ -11,6 +11,7 @@ import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from orchestrator.auth.flows import AccountFlows, PostgresAuthStore, Throttled
 from orchestrator.auth.sessions import (
     InvalidIdentity,
     ProviderUnavailable,
@@ -54,12 +55,42 @@ def inspect(request, boundary):
 Boundary = Annotated[tuple[AuthSettings, SessionManager], Depends(get_boundary)]
 
 
+def get_account_flows(boundary: Boundary):
+    settings, manager = boundary
+    return AccountFlows(PostgresAuthStore(settings.supabase_session_database_url.get_secret_value()), manager)
+
+
+Flows = Annotated[AccountFlows, Depends(get_account_flows)]
+
+
+def flow_cookie(settings):
+    return '__Host-opsbrain_flow' if settings.secure_cookie else 'opsbrain_flow_dev'
+
+
+def set_flow_cookie(response, settings, cookie, max_age=3600):
+    response.set_cookie(flow_cookie(settings), cookie, max_age=max_age, path='/',
+                        secure=settings.secure_cookie, httponly=True, samesite='lax')
+
+
 @router.get('/api/auth/session')
-def session(request: Request, boundary: Boundary):
+def session(request: Request, boundary: Boundary, flows: Flows):
     settings, manager = boundary
     cookie, principal = inspect(request, boundary)
     if principal is None:
-        response = JSONResponse({'error': 'Authentication required'}, status_code=401, headers={'Cache-Control': 'no-store'})
+        flow = request.cookies.get(flow_cookie(settings))
+        try:
+            flows.limit(request.client.host if request.client else 'unknown', 'bootstrap')
+            context = flows.context(flow)
+            if context is None:
+                flow = flows.issue()
+            response = JSONResponse({'authenticated': False, 'signup_enabled': settings.beta_signup_enabled,
+                                     'recovery_allowed': bool(context and context['user_id']),
+                                     'csrf_token': flows.csrf(flow)}, headers={'Cache-Control': 'no-store'})
+            set_flow_cookie(response, settings, flow, max_age=900 if context and context['user_id'] else 3600)
+        except Throttled as exc:
+            raise HTTPException(429, 'Please wait before trying again', headers={'Retry-After': str(exc.retry_after)}) from None
+        except (ValueError, psycopg.Error, ProviderUnavailable):
+            raise HTTPException(503, 'Account access unavailable') from None
         clear_cookie(response, settings)
         return response
     return JSONResponse({

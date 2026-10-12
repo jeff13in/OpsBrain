@@ -1,5 +1,10 @@
 # OPU-92: Week 5 architecture and project audit
 
+Current closure: local implementation is complete under the user-directed
+handoff. Hosted setup and release acceptance are tracked separately in OPU-99.
+See [final cross-ticket evidence](week5-closure.md). The report below records
+earlier increments and does not define the current completion scope.
+
 Date: October 12, 2026 (America/Toronto). Baseline:
 `a6e2fc8843e0bf20b4dc2c7ea794b87c32195331` on `joint`.
 Status: audit deliverables ready for review; deployment decisions remain open.

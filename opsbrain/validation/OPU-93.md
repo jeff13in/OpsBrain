@@ -1,5 +1,10 @@
 # OPU-93 local infrastructure increment
 
+Current closure: local implementation is complete under the user-directed
+handoff. Hosted setup and release acceptance are tracked separately in OPU-99.
+See [final cross-ticket evidence](week5-closure.md). The report below records
+earlier increments and does not define the current completion scope.
+
 October 12, 2026. Linear status: In Progress. User confirmed OPU-93 is the next
 work package and all infrastructure must be free.
 

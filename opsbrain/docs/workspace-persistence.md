@@ -108,8 +108,8 @@ composite FKs, child deletion/tombstones, preferences, quotas and provider-accou
 closure cleanup. API and frontend tests use controlled provider/DOM responses.
 Production provider login/callbacks, staging migration and PostgREST acceptance,
 real save→logout→login→reopen, browser/mobile/assistive technology, concurrency
-across replicas and backup/restore remain open. OPU-97 stays In Progress pending
-those gates; local persistence tests do not establish a hosted client release.
+across replicas and backup/restore remain open. The user delegated these hosted
+checks to the other engineer. Local completion does not establish a client release.
 
 Rollback application wiring together with its API contract while retaining the
 additive schema and account data. Never drop/reset a shared database. Use the

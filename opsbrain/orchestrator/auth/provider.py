@@ -5,6 +5,7 @@ from uuid import UUID
 
 import httpx
 
+from orchestrator.auth.flows import Throttled
 from orchestrator.auth.sessions import (
     InvalidIdentity,
     PersistenceError,
@@ -26,9 +27,11 @@ class SupabaseProvider:
         try:
             with httpx.Client(timeout=5, follow_redirects=False, transport=self._transport) as client:
                 response = client.request(method, self.origin + path, headers=headers, json=payload)
-            if response.status_code in (400, 401, 403):
+            if response.status_code == 429:
+                raise Throttled()
+            if response.status_code in (400, 401, 403, 422):
                 raise InvalidIdentity()
-            if response.status_code not in (200, 204) or len(response.content) > 65536:
+            if response.status_code not in (200, 201, 204) or len(response.content) > 65536:
                 raise ProviderUnavailable()
             return response.json() if response.content else None
         except (httpx.HTTPError, ValueError) as exc:
@@ -58,6 +61,10 @@ class SupabaseProvider:
 
     def refresh(self, refresh_token):
         body = self._request('POST', '/auth/v1/token?grant_type=refresh_token', payload={'refresh_token': refresh_token})
+        return self.token_pair(body)
+
+    @staticmethod
+    def token_pair(body):
         try:
             access, refresh, expires = body['access_token'], body['refresh_token'], body['expires_in']
             if not isinstance(access, str) or not isinstance(refresh, str) or not access or not refresh:
@@ -66,6 +73,39 @@ class SupabaseProvider:
                 raise ProviderUnavailable()
             return access, refresh, expires
         except (KeyError, TypeError) as exc:
+            raise ProviderUnavailable() from exc
+
+    def login(self, email, password):
+        return self.token_pair(self._request('POST', '/auth/v1/token?grant_type=password', payload={'email': email, 'password': password}))
+
+    def signup(self, email, password, callback):
+        from urllib.parse import urlencode
+        self._request('POST', '/auth/v1/signup?' + urlencode({'redirect_to': callback}), payload={'email': email, 'password': password})
+
+    def resend(self, email, callback):
+        from urllib.parse import urlencode
+        self._request('POST', '/auth/v1/resend?' + urlencode({'redirect_to': callback}), payload={'type': 'signup', 'email': email})
+
+    def recover(self, email, callback):
+        from urllib.parse import urlencode
+        self._request('POST', '/auth/v1/recover?' + urlencode({'redirect_to': callback}), payload={'email': email})
+
+    def verify(self, token_hash, kind):
+        return self.token_pair(self._request('POST', '/auth/v1/verify', payload={'token_hash': token_hash, 'type': kind}))
+
+    def password(self, access, password):
+        self._request('PUT', '/auth/v1/user', access=access, payload={'password': password})
+
+    def logout_all(self, access):
+        self._request('POST', '/auth/v1/logout?scope=global', access=access)
+
+    def provision(self, access):
+        # Subject comes from the verified user JWT; the RPC accepts no target ID.
+        self.verified_user(access)
+        body = self._data_request('POST', '/rest/v1/rpc/ensure_personal_workspace', access, {})
+        try:
+            return str(UUID(body))
+        except (ValueError, TypeError, AttributeError) as exc:
             raise ProviderUnavailable() from exc
 
     def logout(self, access):

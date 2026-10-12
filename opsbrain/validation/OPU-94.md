@@ -1,5 +1,10 @@
 # OPU-94 homepage/account UI increment
 
+Current closure: local implementation is complete under the user-directed
+handoff. Hosted setup and release acceptance are tracked separately in OPU-99.
+See [final cross-ticket evidence](week5-closure.md). The report below records
+earlier increments and does not define the current completion scope.
+
 October 12, 2026. Local frontend implementation delivered; provider acceptance
 remains pending. Keep this issue In Progress and preserve its OPU-93 dependency.
 

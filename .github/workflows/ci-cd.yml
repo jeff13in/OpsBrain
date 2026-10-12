@@ -80,6 +80,10 @@ jobs:
       - name: Build allowlisted static assets
         run: npm run build
 
+      - name: Scan public build for credential patterns
+        working-directory: opsbrain
+        run: python3 scripts/check-public-secrets.py web/dist
+
   # ── Stage 1: Test ─────────────────────────────────────────────────────────
   test:
     name: Lint & Test
@@ -108,7 +112,7 @@ jobs:
   build-check:
     name: Build Check (${{ matrix.agent.name }})
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, frontend, workspace-database]
     if: github.event_name == 'pull_request'
 
     strategy:
@@ -136,7 +140,7 @@ jobs:
   build-push:
     name: Build & Push Images
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, frontend, workspace-database]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/jeffin-dev')
 
     permissions:
@@ -202,9 +206,16 @@ jobs:
 
     steps:
       - name: Trigger ArgoCD sync
+        env:
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+          ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
         run: |
-          curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "${{ secrets.ARGOCD_SERVER }}/api/v1/applications/opsbrain/sync" \
-            -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
+          status_code=$(curl --fail --silent --show-error --max-time 30 -o /dev/null -w "%{http_code}" \
+            -X POST "$ARGOCD_SERVER/api/v1/applications/opsbrain/sync" \
+            -H "Authorization: Bearer $ARGOCD_TOKEN" \
             -H "Content-Type: application/json" \
-            -d '{"prune": true, "force": false}'
+            -d '{"prune": true, "force": false}')
+          case "$status_code" in
+            200|201|202) echo "ArgoCD sync request accepted ($status_code)" ;;
+            *) echo "ArgoCD sync request rejected ($status_code)"; exit 1 ;;
+          esac

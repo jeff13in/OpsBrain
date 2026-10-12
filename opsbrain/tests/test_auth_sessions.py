@@ -235,7 +235,8 @@ def client(setup):
 
 
 def test_anonymous_private_requests_are_denied(client):
-    assert client.get('/api/auth/session').status_code == 401
+    # This fixture has no auth-flow database; bootstrap fails closed.
+    assert client.get('/api/auth/session').status_code == 503
     assert client.get(f'/api/workspaces/{WORKSPACE}/session').status_code == 401
     assert client.get(f'/api/workspaces/{WORKSPACE}/summary').status_code == 401
 

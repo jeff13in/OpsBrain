@@ -25,8 +25,9 @@ See [current Supabase plan limits](https://supabase.com/pricing).
 Record development, staging and production separately: project identifier,
 Supabase region and budget, API-capable host, HTTPS application origin, access
 owner and SMTP sender/domain. Supply credentials through the host's secret
-manager rather than issue descriptions or chat. OPU-92 remains In Review;
-its architecture must be accepted before applying database/session decisions.
+manager rather than issue descriptions or chat. The architecture and local
+implementation are reviewed in the OPU-92–98 closure evidence; hosted setup
+and acceptance are delegated to the other engineer by the user.
 The approved beta identity list is still needed before provisioning users.
 
 ## Local preflight
@@ -99,6 +100,15 @@ need acceptance checks. Conversation storage and session encryption are later
 increments; no saved-work/composite conversation FK coverage is claimed here.
 
 ## Applying and rolling back
+
+Current implementation includes four ordered migrations, user-JWT verified
+onboarding (no administrative key in request handling), encrypted server sessions,
+durable recovery/CSRF contexts and database rate buckets. The dedicated login
+needs both `opsbrain_session_store` and `opsbrain_auth_store`; it must never have
+public client CRUD or administrative memberships. Admins manage private beta
+email hashes and UUID approvals. See [account configuration](account-authentication.md)
+and the [release runbook](client-release-runbook.md). Historical foundation
+evidence above remains a record of the first increment.
 
 Do not apply this application migration to the existing RAG database. Before a
 hosted apply, identify the exact environment and project, check the migration

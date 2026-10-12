@@ -3,6 +3,13 @@
 Audit completed: October 12, 2026 (America/Toronto). Source baseline:
 `a6e2fc8843e0bf20b4dc2c7ea794b87c32195331` on `joint`.
 
+Closure update: OPU-92–98 local implementation follows this contract, with
+bounded records/mutation routes replacing the initial REST proposal below.
+The user delegated hosted setup and acceptance to the other engineer; OPU-99
+preserves that release gate. See [closure evidence](../validation/week5-closure.md)
+and [implemented account flows](../docs/account-authentication.md). Historical
+audit observations below describe the starting stack, not the final implementation.
+
 This is the implementation contract for Week 5, not evidence that authentication
 or tenant isolation already exists. OPU-93–98 deliver the subsequent work.
 Week 4's OPU-91 private preview gate remains unchanged. Existing regression
@@ -98,7 +105,14 @@ Expose auth actions through the same-origin backend. Existing browser requests
 must switch to same-origin credentials only for the new authenticated contract;
 keep demo fixtures and the development gateway independently testable.
 
-### Proposed endpoint contract (not implemented)
+### Initial endpoint proposal (superseded by implementation)
+
+The table below records the audit proposal. The implemented routes are described
+in [account flows](../docs/account-authentication.md) and
+[persistence](../docs/workspace-persistence.md): user-JWT provisioning is automatic
+during verified login/callback, records use bounded `/records/{kind}` reads and
+the versioned `/mutations` command endpoint. There is no public target-user
+provisioning route. The client-only host excludes legacy engineer APIs.
 
 | Endpoint | Method | Required behavior |
 | --- | --- | --- |

@@ -1,5 +1,10 @@
 # OPU-96 client workspace UI evidence
 
+Current closure: local implementation is complete under the user-directed
+handoff. Hosted setup and release acceptance are tracked separately in OPU-99.
+See [final cross-ticket evidence](week5-closure.md). The report below records
+earlier increments and does not define the current completion scope.
+
 October 12, 2026. Local UI/read-only integration delivered; keep In Progress
 pending hosted acceptance. OPU-95 dependency remains intact. Free-only budget
 preserved; no account upgrade or paid resource created.

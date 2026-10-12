@@ -15,9 +15,9 @@ See [current persistence contract](workspace-persistence.md).
 | --- | --- |
 | dashboard | Authorized workspace name, profile welcome, recent projects and availability |
 | tools | Demo tool entry points; live integrations explicitly unavailable |
-| projects | Up to ten recent projects, read-only; saved-work/create controls unavailable |
+| projects | Paginated project CRUD, explicit Demo saves and saved-investigation reopen/delete when persistence is available |
 | activity | Actual recent project-update timestamps; complete activity feed unavailable |
-| settings | Authorized display name/workspace; profile/preference writes unavailable |
+| settings | Authorized display name/workspace and validated profile/start-page/motion preferences |
 | help | Built-in beta, demo, retention and support explanations |
 | demo-chat | Existing fixed-response chat, citations and per-agent results |
 | demo-monitoring | Existing synthetic charts/tables, refresh and scenario controls |
@@ -76,14 +76,16 @@ workspace data before server confirmation.
 
 ## Persistence and release gates
 
-No database objects, dependencies or mutations are added by this UI increment.
-Profile/preference edits, project create/update/delete, saved investigations and
-an account event feed need OPU-97 contracts, validation, CSRF and persistence.
+No database objects or dependencies are added by the UI itself. OPU-97 provides
+profile/preference edits, project CRUD and saved investigations with CSRF and
+persistence; a complete account event feed remains outside this increment.
 Do not enable a write control by changing a client flag alone. Client live
 integrations retain the separate tenant isolation gate.
 
-OPU-93/94/95 provider login, callbacks, hosting and acceptance remain incomplete;
-the local static preview cannot supply a signed-in client journey. Complete real
+Provider login/callback code is implemented; hosting and actual browser acceptance
+are delegated to the other engineer. The separate same-origin `orchestrator.client`
+entry point serves the UI/account APIs; the static preview cannot supply this
+journey. Before release, complete real
 signup/login-to-workspace, refresh, settings navigation, account-switch/logout,
 two-client denial and browser/keyboard/screen-reader checks before release.
 The new summary reads have controlled provider tests, not hosted Supabase evidence.

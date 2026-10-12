@@ -67,17 +67,18 @@ the encryption key separately. Do not include tokens/DSNs in issue comments.
 | POST /api/auth/logout | Exact Origin plus constant-time CSRF check; delete application session before requesting provider local logout; clear cookie |
 | GET /api/workspaces/{uuid}/session | Require identity and authorized membership; inaccessible IDs return 404; response is no-store |
 
-The configured signed-out session endpoint returns 401 and clears the cookie.
-The unconfigured endpoint returns 503. Anonymous login bootstrap is not enabled
-until the credential-exchange/rate-limit implementation is ready. No provider
+The configured signed-out session endpoint returns anonymous 200 state, clears
+the application cookie and issues a private CSRF flow cookie. The unconfigured
+endpoint returns 503. Migration 004 and the dedicated auth-store capability are
+required for credential exchange and rate limiting. No provider
 token appears in endpoint responses. Logout revokes this application session
 immediately even if provider logout fails; other devices are unchanged. Existing
 provider access JWTs can remain usable until their independent expiry.
 
 The browser's guarded #/workspace route resolves a verified server session before
 showing client content. Anonymous/unverified users go to login/verification.
-OPU-96 now adds the workspace shell, authorized summary reads and embedded demo
-tools after this gate; account persistence remains later work. A successful login response
+OPU-96 adds the workspace shell, authorized summary reads and embedded demo
+tools after this gate; OPU-97 adds account persistence. A successful login response
 now triggers a fresh session check before choosing an allowlisted destination
 (Workspace or Home). Navigation/account logout clears protected page memory,
 aborts requests and rejects stale replies. Logout clears the display before the
@@ -86,13 +87,13 @@ retains its existing separate browser-only behavior.
 
 ## Remaining release gates
 
-Login/signup/resend/recovery/password exchanges and /auth/callback are not
-implemented yet. The future provider exchange must call SessionManager.issue
-only with verified provider tokens/expiry; the manager derives identity itself
-and requires an authorized workspace. Set the opaque cookie with the provided
-helper and bind callback state/verifier to the server session. Complete anonymous
-CSRF bootstrap, rate limits, one-time verification/recovery, account-wide recovery
-revocation and safe callback parameter removal before enabling client signup.
+Login/signup/resend/recovery/password exchanges and /auth/callback are now
+implemented. Identity is revalidated before user-JWT provisioning; the session
+manager derives identity and requires an authorized workspace. Recovery uses
+encrypted server-only context, atomic one-time claims, account-wide local
+revocation and provider-global logout. Verification consumes provider token hashes
+and requires explicit login afterwards. Anonymous CSRF and atomic database auth
+rate limits are implemented. See [account flows](account-authentication.md).
 
 Complete OPU-93 provider/database/SMTP/host setup, OPU-94 live email acceptance,
 OPU-96 hosted workspace acceptance and OPU-97 persistence. Verify real restart/replica refresh
@@ -100,7 +101,8 @@ races, provider outages, role grants, key rotation, backup/restore, email journe
 browser/mobile and assistive-technology behavior. Production ingress must keep
 old unauthenticated /ask and specialist routes private; this new boundary does
 not protect arbitrary legacy endpoints. Shared live tools remain gated on tenant
-isolation. OPU-95 stays In Progress pending those acceptance conditions.
+isolation. Per user instruction, hosted acceptance belongs to the other engineer;
+local completion does not authorize a client release.
 
 Rollback the application deployment while retaining the additive schema and
 private session data, disabling client ingress as needed. Do not reset/drop a

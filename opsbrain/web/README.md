@@ -299,6 +299,13 @@ provider login/callback integration and account persistence remain pending.
 
 ## OPU-94 account views
 
+The backend account flows are now implemented and the same-origin client host
+is `orchestrator.client:app`, run with `--no-access-log`. Signup defaults disabled;
+the configured approved-beta flow uses private email hashes and user-JWT
+onboarding. See [account setup and engineer handoff](../docs/account-authentication.md).
+OPU-99 tracks the user-delegated hosted/browser release acceptance. Earlier
+increment descriptions below are historical implementation evidence.
+
 Home now links to Log in and Sign up. Dedicated `#/login`, `#/signup`,
 `#/verification`, `#/recovery` and `#/password` views provide accessible labelled
 fields, password-manager autocomplete, inline validation, pending states and

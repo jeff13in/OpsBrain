@@ -1,15 +1,12 @@
 # OPU-94 account UI and backend handoff
 
-The frontend views/adapter are implemented. Backend endpoints described here
-remain to be integrated with Supabase and the OPU-95 server-session work. These
-responses are a contract, not proof that accounts or emails work today.
-
-OPU-95 now implements authenticated session inspection, logout and a protected
-workspace session endpoint. Signed-out requests currently return 401 when
-configured, or 503 when setup is incomplete. The anonymous 200 bootstrap below
-remains a required login/email-exchange handoff, rather than enabling unsupported
-credential submission. Login/signup/resend/recovery/password/callback endpoints
-are still pending provider integration. See [session management](session-management.md).
+The frontend views/adapter and backend exchanges are implemented locally.
+Configured signed-out requests return the anonymous 200 bootstrap below;
+incomplete provider/private database setup fails closed with 503. All exchanges
+use Supabase's fixed Auth paths and private durable flow/rate state. Hosted
+connectivity and email acceptance are delegated to the other engineer by the
+user; local fixtures do not prove email delivery. See
+[account implementation and handoff](account-authentication.md).
 
 ## Bootstrap
 
@@ -82,8 +79,8 @@ opening the view itself verified an account.
 
 ## Acceptance still required
 
-OPU-93 provider/SMTP setup and OPU-95 session/callback handling must be completed
-before end-to-end account acceptance. Test real approved signup, duplicate signup,
+The other engineer must complete provider/SMTP/hosted setup before release.
+Test real approved signup, duplicate signup,
 verification/resend, invalid login, expired/replayed links, cross-device recovery,
 password update/session revocation and server-origin/CSRF enforcement. Run actual
 desktop/mobile, keyboard and screen-reader checks. Current tests use controlled

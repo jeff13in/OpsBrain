@@ -10,6 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class AuthSettings(BaseSettings):
     app_env: str = 'production'
     app_origin: str = ''
+    beta_signup_enabled: bool = False
     supabase_url: str = ''
     supabase_publishable_key: SecretStr = SecretStr('')
     session_encryption_key: SecretStr = SecretStr('')

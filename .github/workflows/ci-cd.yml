@@ -36,6 +36,24 @@ defaults:
     working-directory: opsbrain
 
 jobs:
+  workspace-database:
+    name: Workspace Migration & RLS
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: opsbrain/supabase
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: opsbrain/supabase/package-lock.json
+      - name: Install local PostgreSQL test runtime
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test clean migration and access policies
+        run: npm test
+
   # ── Frontend gate ────────────────────────────────────────────────────────
   frontend:
     name: Frontend Test & Build

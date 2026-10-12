@@ -192,11 +192,15 @@ are later scope.
 
 Linear's former Week 5: Regression Testing milestone is now Week 6: Regression
 Testing. All 15 existing issues, deliverables, owners, priorities and dependency
-relationships remain; its target moved from October 9 to October 16, 2026.
+relationships remain. A fresh Linear check on October 12, 2026 shows its current
+target is October 23, 2026; the earlier October 16 target has been superseded.
 No Week 7 or later milestone was found, so no missing work was invented.
 
-Week 5 calendar dates remain unset. Week 4 is incomplete, and the project's
-historical October 7 target precedes Week 6's October 16 target. Capacity,
+Linear now lists October 16, 2026 as Week 5's target and October 23 as Week 6's
+target. Week 5's milestone description still says calendar dates are unset;
+the structured target is recorded here without treating it as agreed capacity.
+Week 4 is incomplete, and the project's historical October 7 target precedes
+both remaining milestone targets. Capacity,
 prerequisites and the actual delivery calendar must be reviewed before promising
 completion. Week labels express order, not an agreed current start date.
 

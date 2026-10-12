@@ -70,7 +70,8 @@ and its independent protection remain pending in OPU-91.
 
 ## Safety and limits
 
-The build copies exactly ten public assets, not the backend/environment tree.
+The build copies exactly twelve public assets, including the account UI and guard modules,
+not the backend/environment tree.
 Unknown existing build outputs cause a failure instead of deleting user files.
 Never put provider keys, database credentials, access tokens or private
 operational fixtures in `public/`. Environment/config copying is not supported.
@@ -293,5 +294,40 @@ The reviewed backlog, dependencies and acceptance criteria are in the
 
 The client release is an approved-client beta. Saved account work will remain
 until the client deletes it; existing browser-local demo history still expires
-after 72 hours. Authentication and account persistence are not implemented yet.
+after 72 hours. Account views and a same-origin auth adapter are implemented;
+provider login/callback integration and account persistence remain pending.
+
+## OPU-94 account views
+
+Home now links to Log in and Sign up. Dedicated `#/login`, `#/signup`,
+`#/verification`, `#/recovery` and `#/password` views provide accessible labelled
+fields, password-manager autocomplete, inline validation, pending states and
+safe error messages. Signup/new passwords require at least 12 characters; login
+accepts existing shorter passwords. Passwords and CSRF tokens are never saved in
+browser storage or controller snapshots. Navigation cancels pending account work
+and clears the account state; stale replies cannot restore it.
+
+The static preview has no authentication provider. Account forms remain disabled
+unless `/api/auth/session` returns the agreed bootstrap contract. Signup also
+requires the server's eligibility flag; recovery requires a verified server
+recovery context. No mock account or local success fallback is available.
+The existing development gateway continues to reject auth mutation routes.
+See [the backend handoff](../docs/auth-ui-contract.md). Hosted email, callback,
+desktop/mobile visual and assistive-technology acceptance remain open.
+
+## OPU-95 protected workspace entry
+
+`#/workspace` resolves the same-origin session before rendering its account gate.
+Anonymous visitors go to login; unverified visitors go to verification. Missing
+or malformed membership/session responses cannot authorize the route. Workspace
+tools are still OPU-96 work. After login success, a second session check resolves
+the authorized workspace. Post-login destinations allow only Workspace or Home.
+
+Logout clears the gate immediately, posts CSRF-protected server revocation, then
+returns to login on confirmed success. Failed logout explicitly reports that
+revocation is unconfirmed. Navigation cancels pending session reads and clears
+protected state. Demo history stays separate with its existing retention.
+The existing engineer API adapter remains credential-omitting; this new boundary
+uses same-origin cookies. Production ingress must keep the old engineer/agent
+APIs private. See [session setup and remaining gates](../docs/session-management.md).
 Client live operational access requires verified workspace isolation.

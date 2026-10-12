@@ -1,4 +1,6 @@
 import { createApi } from './api.js';
+import { AUTH_ROUTES, createAuth } from './auth.js';
+import { createProtectedSession, safePostLoginDestination } from './route-guards.js';
 import { createHistory, HISTORY_KEY } from './history.js';
 import { createMonitoring } from './monitoring.js';
 import { createChat, demoReply } from './chat.js';
@@ -8,6 +10,21 @@ import { landingSectionFromHash, navigation, renderPage, routeFromHash, validate
 const main = document.querySelector('#main');
 const nav = document.querySelector('#workspace-navigation');
 const toggle = document.querySelector('.menu-toggle');
+const isAuthRoute = () => AUTH_ROUTES.some(item => item.id === routeFromHash(window.location.hash));
+const accountSession = createProtectedSession({ onChange() {
+  if (routeFromHash(window.location.hash) === 'workspace') { render(); document.getElementById('workspace-status')?.focus(); }
+}, onRedirect(destination) { window.location.hash = destination; } });
+const auth = createAuth({ async onLogin() {
+  const next = new URLSearchParams(window.location.hash.split('?')[1] || '').get('next');
+  await accountSession.load();
+  if (accountSession.snapshot().status === 'authorized') window.location.hash = safePostLoginDestination(next);
+}, onChange() {
+  if (!isAuthRoute()) return;
+  render();
+  const state = auth.snapshot();
+  const field = Object.keys(state.errors)[0];
+  document.getElementById(field ? `auth-${field}` : 'auth-status')?.focus();
+} });
 let apiMode = 'demo';
 const api = createApi({ onChange() {
   const mode = api.snapshot().mode;
@@ -62,7 +79,7 @@ function render(moveFocus = false) {
     const records = historyFilter ? historyState.records.filter(record => record.turns[0].question.toLowerCase().includes(historyFilter.toLowerCase())) : historyState.records;
     historyState = { ...historyState, records, total };
   }
-  const page = renderPage(route, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState, historyFilter, connectionState: api.snapshot() });
+  const page = renderPage(route, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState, historyFilter, connectionState: api.snapshot(), authState: auth.snapshot(), protectedState: accountSession.snapshot() });
   nav.innerHTML = navigation(route);
   // Renderers contain trusted templates; all dynamic text is escaped in ui.js.
   main.innerHTML = page.html;
@@ -72,6 +89,17 @@ function render(moveFocus = false) {
   toggle.setAttribute('aria-expanded', 'false');
   nav.classList.remove('is-open');
   if (moveFocus) main.focus();
+  document.querySelector('#account-refresh')?.addEventListener('click', () => { void accountSession.load(); });
+  document.querySelector('#account-logout')?.addEventListener('click', () => {
+    activeHistoryId = null; chat.clear(); monitoring.setActive(false); api.disconnect('demo');
+    void accountSession.logout();
+  });
+  document.querySelector('#auth-form')?.addEventListener('submit', event => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    void auth.submit(route, { email: form.get('email'), password: form.get('password'), confirmation: form.get('confirmation') });
+  });
+  document.querySelector('#auth-retry')?.addEventListener('click', () => { void auth.load(); });
   document.querySelector('#connect-live')?.addEventListener('click', () => {
     activeHistoryId = null; monitoring.setActive(false); chat.setMode('live'); void api.connect();
   });
@@ -209,5 +237,13 @@ window.addEventListener('storage', event => {
 });
 setInterval(refreshHistory, 60000);
 
-window.addEventListener('hashchange', () => render(true));
+window.addEventListener('hashchange', () => {
+  auth.leave();
+  accountSession.leave();
+  render(true);
+  if (isAuthRoute()) void auth.load();
+  if (routeFromHash(window.location.hash) === 'workspace') void accountSession.load();
+});
 render();
+if (isAuthRoute()) void auth.load();
+if (routeFromHash(window.location.hash) === 'workspace') void accountSession.load();

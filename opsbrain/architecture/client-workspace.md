@@ -218,12 +218,26 @@ tests with the current Python 3.11 service images and dependency ranges. Browser
 Supabase SDK is unnecessary for the proposed server-session boundary. No new
 dependency was installed during this audit.
 
+OPU-93 now includes an initial versioned profile/workspace/membership/project
+schema, private approval table, service-only provisioning RPC and local PostgreSQL
+RLS tests. These are implementation preparation, not hosted provider acceptance.
+See [setup and test instructions](../docs/supabase-setup.md).
+
+OPU-95 adds a private PostgreSQL session table, dedicated server capability,
+encrypted token storage, serialized refresh, session inspection/logout endpoints
+and a guarded workspace entry. It revalidates the provider user and user-scoped
+workspace visibility for protected requests. Provider exchanges/callbacks,
+deployment credentials and real replica acceptance remain pending. The default
+seven-day absolute/24-hour idle policy is implemented in this local increment.
+See [session management handoff](../docs/session-management.md).
+
 Proposed server-only settings: SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY,
 SUPABASE_SECRET_KEY (administrative operations only), APP_ORIGIN,
 SESSION_ENCRYPTION_KEY and private database connection settings. SMTP secrets
-belong in the provider control plane. Use different provider projects, callback
-origins and keys for development/staging/production; never reuse production
-client data in tests. The build still copies only allowlisted public assets.
+belong in the provider control plane. User confirmed a free-only budget during
+OPU-93: use local development and separate free staging/production projects,
+subject to account quota, with separate callback origins and keys. Never reuse
+production client data in tests. The build still copies only allowlisted assets.
 
 Proposed modules: `orchestrator/auth/`, `workspace/`, `projects/`,
 `conversations/`, `shared/tenant_context.py`, `supabase/migrations/` and
@@ -236,10 +250,10 @@ not empty scaffolding during the audit.
 | Decision | Current state | Before |
 | --- | --- | --- |
 | API-capable host and same-origin reverse proxy | Not selected/verified; current deployment is static | OPU-93 environment setup and OPU-98 staging |
-| Supabase project, region and budget | Not supplied; do not infer geography from the user's timezone | OPU-93 provisioning |
+| Supabase project, region and budget | Free-only budget confirmed; project/region still unselected; local development plus two free hosted environments subject to account quota | OPU-93 provisioning |
 | SMTP sender/domain and delivery owner | Not supplied; default provider SMTP is not a client-release solution | OPU-94 verification/recovery acceptance |
 | Approved beta identities and access owner | Release policy confirmed; identity list not supplied | Client account provisioning |
-| Calendar and capacity | Week 4 incomplete; Week 5 dates unset; Week 6 target Oct 16; historical project target Oct 7 conflicts | Scheduling review before delivery promise |
+| Calendar and capacity | Linear checked October 12: Week 5 target Oct 16, Week 6 target Oct 23; Week 5 description still says dates unset; Week 4 incomplete; historical project target Oct 7 conflicts | Scheduling review before delivery promise |
 | Storage quotas and backup/deletion window | Indefinite client retention confirmed; limits/backup window need budget decision | Persistence release acceptance |
 
 Until these values are supplied, this contract is ready for review, but external

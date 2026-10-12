@@ -125,6 +125,7 @@ const documentStub = {
 };
 
 const fetchCalls = [];
+const fetchDetails = [];
 const responses = {
   '/api/orchestrator/health': { status: 'ok', agent: 'orchestrator' },
   '/api/monitoring/alerts/summary': { total: 2, active: 1, suppressed: 0 },
@@ -137,9 +138,10 @@ globalThis.FormData = class {
   constructor(form) { this.form = form; }
   get(name) { return namedElements.get(name)?.value ?? null; };
 };
-globalThis.fetch = async (url) => {
+globalThis.fetch = async (url, options) => {
   const path = String(url).replace(/^https?:\/\/[^/]+/, '');
   fetchCalls.push(path);
+  fetchDetails.push({ path, options });
   const body = responses[path];
   return body
     ? { status: 200, text: async () => JSON.stringify(body) }
@@ -266,4 +268,51 @@ test('connection controls work outside Overview, including disconnect and reconn
   fire(documentStub.getElementById('disconnect-api'), 'click');
   assert.doesNotMatch(main.innerHTML, /Live API connected/);
   assert.match(main.innerHTML, /Connect live before submitting a question/);
+});
+
+test('account routes remain unavailable when the preview lacks authentication', async () => {
+  windowStub.location.hash = '#/login'; windowStub.dispatch('hashchange');
+  await settle();
+  assert.match(main.innerHTML, /Account access is temporarily unavailable/);
+  assert.match(main.innerHTML, /type="submit" disabled/);
+  assert.ok(documentStub.getElementById('auth-retry')?.listeners.get('click')?.length);
+});
+
+test('login form wiring sends credentials through the auth adapter and clears password fields', async () => {
+  responses['/api/auth/session'] = { authenticated: false, signup_enabled: false, recovery_allowed: false, csrf_token: 'b'.repeat(32) };
+  responses['/api/auth/login'] = { ok: true };
+  fire(documentStub.getElementById('auth-retry'), 'click'); await settle();
+  const form = documentStub.getElementById('auth-form');
+  assert.ok(form?.listeners.get('submit')?.length);
+  documentStub.getElementById('auth-email').value = 'client@example.test';
+  documentStub.getElementById('auth-password').value = 'secret never displayed';
+  fire(form, 'submit'); await settle();
+  const call = fetchDetails.find(item => item.path === '/api/auth/login');
+  assert.equal(call.options.method, 'POST');
+  assert.equal(call.options.credentials, 'same-origin');
+  assert.deepEqual(JSON.parse(call.options.body), { email: 'client@example.test', password: 'secret never displayed' });
+  assert.match(main.innerHTML, /You are signed in/);
+  assert.doesNotMatch(main.innerHTML, /secret never displayed/);
+  assert.equal(documentStub.getElementById('auth-password').value, '');
+  assert.ok(documentStub.getElementById('auth-status').focused);
+  windowStub.location.hash = '#/home'; windowStub.dispatch('hashchange');
+  assert.match(main.innerHTML, /href="#\/login"/);
+});
+
+test('protected workspace verifies session and logout clears display before server confirmation', async () => {
+  responses['/api/auth/session'] = { authenticated: true, verified: true, signup_enabled: false, recovery_allowed: false,
+    csrf_token: 'b'.repeat(32), user_id: '00000000-0000-4000-8000-000000000001', workspace_ids: ['00000000-0000-4000-8000-000000000002'] };
+  responses['/api/auth/logout'] = { ok: true };
+  windowStub.location.hash = '#/workspace'; windowStub.dispatch('hashchange');
+  assert.match(main.innerHTML, /Checking account access/);
+  assert.doesNotMatch(main.innerHTML, /account-logout/);
+  await settle();
+  assert.match(main.innerHTML, /Your account is verified/);
+  fire(documentStub.getElementById('account-logout'), 'click');
+  assert.doesNotMatch(main.innerHTML, /Your account is verified/);
+  await settle();
+  assert.equal(windowStub.location.hash, '#/login');
+  const call = fetchDetails.find(item => item.path === '/api/auth/logout');
+  assert.equal(call.options.method, 'POST');
+  assert.equal(call.options.headers['X-CSRF-Token'], 'b'.repeat(32));
 });

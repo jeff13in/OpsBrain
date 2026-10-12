@@ -1,4 +1,5 @@
 import { HISTORY_TTL } from './history.js';
+import { AUTH_ROUTES } from './auth.js';
 import { DEMO_FIXTURE, DEMO_STATES, demoState } from './demo.js';
 import { CHAT_SCENARIOS } from './chat.js';
 import { METRICS, MONITORING_RANGES, MONITORING_SCENARIOS } from './monitoring.js';
@@ -10,6 +11,8 @@ export const ROUTES = Object.freeze([
   { id: 'monitoring', title: 'Monitoring', icon: 'pulse' },
   { id: 'history', title: 'History', icon: 'clock' },
   { id: 'components', title: 'Interface kit', icon: 'layers' },
+  ...AUTH_ROUTES,
+  { id: 'workspace', title: 'Workspace', icon: 'grid', hidden: true },
 ]);
 
 export const AGENTS = Object.freeze([
@@ -60,7 +63,7 @@ export function landingSectionFromHash(hash) {
 }
 
 export function navigation(active) {
-  return ROUTES.map(route => `<a href="#/${route.id}" ${active === route.id ? 'aria-current="page"' : ''}>${icon(route.icon)}<span>${route.title}</span>${route.ticket ? '<span class="nav-next">NEXT</span>' : ''}</a>`).join('');
+  return ROUTES.filter(route => !route.hidden).map(route => `<a href="#/${route.id}" ${active === route.id ? 'aria-current="page"' : ''}>${icon(route.icon)}<span>${route.title}</span>${route.ticket ? '<span class="nav-next">NEXT</span>' : ''}</a>`).join('');
 }
 
 export function agentCard(agent) {
@@ -126,14 +129,14 @@ function home(mode = 'demo') {
     ['Inspect the platform.', 'Provides AWS and Kubernetes context, plus existing Terraform state or plan-file inspection.', 'Real AWS/cluster acceptance is deferred. Terraform inspection does not create or apply a plan.'],
     ['Understand the change.', 'Brings together pull requests, commits, workflow status and deployment information.', 'A selected GitHub repository and appropriate credentials are still required.'],
   ];
-  return `<div class="landing-intro"><span class="landing-kicker"><span class="status-dot" aria-hidden="true"></span> ENGINEER PREVIEW / BUILT FOR TWO</span><nav class="landing-links" aria-label="About OpsBrain"><a href="#/home?section=specialists">The agents</a><a href="#/home?section=workflow">How it works</a><a href="#/home?section=preview-scope">Preview scope</a></nav></div>
+  return `<div class="landing-intro"><span class="landing-kicker"><span class="status-dot" aria-hidden="true"></span> ENGINEER PREVIEW / BUILT FOR TWO</span><nav class="landing-links" aria-label="About OpsBrain"><a href="#/home?section=specialists">The agents</a><a href="#/home?section=workflow">How it works</a><a href="#/home?section=preview-scope">Preview scope</a><a href="#/login">Log in</a><a class="landing-signup" href="#/signup">Sign up</a></nav></div>
     <section class="landing-hero" aria-labelledby="landing-title">
       <div class="landing-hero-copy"><p class="eyebrow">OPERATIONS HAVE A STORY. FIND YOURS.</p><h1 id="landing-title">Connect the dots.<br><span>Understand the why.</span></h1><p class="landing-lede">OpsBrain brings runbooks, monitoring, infrastructure and code into one conversation—so you can investigate a problem without losing the bigger picture.</p><div class="button-row"><a class="button primary" href="#/dashboard">Open engineer dashboard ${icon('arrow')}</a><a class="button secondary" href="#/home?section=workflow">See how it works</a></div><p class="landing-disclosure">Private-review build. ${mode === 'live' ? 'API connected; agent availability varies.' : 'No backend connected.'} Not a production service.</p></div>
       <div class="question-map" aria-label="Illustration of an example question and four specialist perspectives; no query is executed"><div class="question-map-top"><span class="small-label">A QUESTION, FOUR PERSPECTIVES</span>${badge('demo', 'Illustration only')}</div><blockquote>“Why is the website slow?”</blockquote><p class="question-map-caption">Example question · not executed</p><div class="map-connector" aria-hidden="true"></div><div class="perspective-grid">${AGENTS.map(agent => `<div class="perspective-node"><span class="agent-icon ${agent.color}">${icon(agent.icon)}</span><strong>${agent.name}</strong><span>${agent.subtitle}</span></div>`).join('')}</div><div class="map-outcome">${icon('layers')}<div><strong>One answer, with context</strong><span>Sources and per-agent outcomes, not a guessed all-clear.</span></div></div></div>
     </section>
     <section class="landing-section" id="specialists" tabindex="-1" aria-labelledby="specialists-title"><div class="landing-section-heading"><div><p class="eyebrow">THE SPECIALISTS</p><h2 id="specialists-title">Different lenses. A clearer picture.</h2></div><p>Each agent has a specific job.<br>The orchestrator brings their context together.</p></div><div class="specialist-grid">${AGENTS.map((agent, index) => `<article class="panel specialist-card"><div class="specialist-card-top"><span class="agent-icon ${agent.color}">${icon(agent.icon)}</span><span class="small-label">0${index + 1} / ${agent.name}</span></div><h3>${descriptions[index][0]}</h3><p>${descriptions[index][1]}</p><div class="specialist-boundary">${descriptions[index][2]}</div></article>`).join('')}</div></section>
     <section class="landing-section workflow-section" id="workflow" tabindex="-1" aria-labelledby="workflow-title"><div class="landing-section-heading"><div><p class="eyebrow">FROM QUESTION TO CONTEXT</p><h2 id="workflow-title">Less tool-hopping.<br>More understanding.</h2></div><p>The implemented backend flow, when connected.<br>This page does not run queries.</p></div><ol class="workflow-steps"><li><span class="step-number">01</span><div><h3>Ask the question</h3><p>The orchestrator selects the relevant agents. Model routing has a keyword fallback.</p></div></li><li><span class="step-number">02</span><div><h3>Gather the perspectives</h3><p>Selected agents run in parallel. A failed agent does not erase another agent’s useful context.</p></div></li><li><span class="step-number">03</span><div><h3>See the whole answer</h3><p>Answers retain sources and per-agent outcomes. Partial availability is reported, not hidden.</p></div></li></ol></section>
-    <section class="landing-section" id="preview-scope" tabindex="-1" aria-labelledby="scope-title"><div class="landing-section-heading"><div><p class="eyebrow">HONEST ABOUT THE STARTING POINT</p><h2 id="scope-title">A small preview.<br>A deliberate foundation.</h2></div><p>For Rifat and Jeffin to build and review together.<br>Not a public production service.</p></div><div class="scope-grid"><article class="panel scope-panel"><span class="small-label">BACKEND IMPLEMENTED</span><h3>The engine behind the interface</h3><ul><li>Multi-agent routing, parallel queries and aggregation.</li><li>Groq chat roles with unchanged Gemini embeddings.</li><li>Sources, partial failures and deterministic fallbacks.</li><li>HTTP by default; Kafka through an explicit override.</li></ul><p>Implemented does not mean every external backend is configured or production deployment is accepted.</p></article><article class="panel scope-panel"><span class="small-label">FRONTEND TODAY</span><h3>Know what you are looking at</h3><ul><li>Landing page, navigation and dashboard foundation.</li><li>Agent connections shown as Disconnected.</li><li>Labelled dashboard states, demo chat and monitoring charts are available.</li><li>Demo history saves locally for 72 hours. Live API queries are optional.</li></ul><p>Demo questions stay in this browser. Live queries require an explicit API connection; no account signup or operational changes are offered.</p></article></div><div class="notice landing-access-note">${icon('shield')}<div><strong>Two engineers. Read-only intent. No public exposure.</strong><p>This build is intended for two approved identities. Hosted access must stay restricted, and any connected API requires its own protection.</p></div></div></section>
+    <section class="landing-section" id="preview-scope" tabindex="-1" aria-labelledby="scope-title"><div class="landing-section-heading"><div><p class="eyebrow">HONEST ABOUT THE STARTING POINT</p><h2 id="scope-title">A small preview.<br>A deliberate foundation.</h2></div><p>For Rifat and Jeffin to build and review together.<br>Not a public production service.</p></div><div class="scope-grid"><article class="panel scope-panel"><span class="small-label">BACKEND IMPLEMENTED</span><h3>The engine behind the interface</h3><ul><li>Multi-agent routing, parallel queries and aggregation.</li><li>Groq chat roles with unchanged Gemini embeddings.</li><li>Sources, partial failures and deterministic fallbacks.</li><li>HTTP by default; Kafka through an explicit override.</li></ul><p>Implemented does not mean every external backend is configured or production deployment is accepted.</p></article><article class="panel scope-panel"><span class="small-label">FRONTEND TODAY</span><h3>Know what you are looking at</h3><ul><li>Landing page, navigation and dashboard foundation.</li><li>Agent connections shown as Disconnected.</li><li>Labelled dashboard states, demo chat and monitoring charts are available.</li><li>Demo history saves locally for 72 hours. Live API queries are optional.</li></ul><p>Demo questions stay in this browser. Live queries require an explicit API connection; account access requires the approved beta service. No operational changes are offered.</p></article></div><div class="notice landing-access-note">${icon('shield')}<div><strong>Two engineers. Read-only intent. No public exposure.</strong><p>This build is intended for two approved identities. Hosted access must stay restricted, and any connected API requires its own protection.</p></div></div></section>
     <section class="landing-cta" aria-labelledby="cta-title"><div><p class="eyebrow">START WITH A CLEARER WORKSPACE</p><h2 id="cta-title">Make room for the signal.</h2><p>Explore the interface. The integrations come next.</p></div><a class="button primary" href="#/dashboard">Open engineer dashboard ${icon('arrow')}</a></section>`;
 }
 
@@ -237,6 +240,11 @@ function liveDashboardPage(state) {
 }
 
 export function renderPage(id, options = {}) {
+  if (AUTH_ROUTES.some(route => route.id === id)) return authPage(id, options.authState);
+  if (id === 'workspace') {
+    const state = options.protectedState || { status: 'checking', message: 'Checking account access…' };
+    return { title: 'Workspace', html: `<section class="auth-page"><div class="panel auth-panel"><p class="eyebrow">YOUR OPSBRAIN ACCOUNT</p><h1>Workspace</h1><p id="workspace-status" role="status" tabindex="-1">${escapeHtml(state.message)}</p>${state.status === 'authorized' ? '<p>Your workspace tools are being prepared.</p><button id="account-logout" class="button secondary" type="button">Log out</button>' : state.status === 'checking' ? '' : '<button id="account-refresh" class="button secondary" type="button">Check account access</button><a class="auth-back" href="#/login">Log in</a>'}</div></section>` };
+  }
   const connection = options.connectionState;
   let page;
   if (connection && connection.mode !== 'demo' && id === 'chat') page = { title: 'Ask OpsBrain', html: liveChatPage(options.chatState || { turns: [], pending: false, draft: '', validation: '' }, connection) };
@@ -244,6 +252,32 @@ export function renderPage(id, options = {}) {
   else if (connection && connection.mode !== 'demo' && id === 'dashboard') page = { title: 'Overview', html: liveDashboardPage(connection) };
   else page = renderContent(id, options);
   return { ...page, html: (connection ? connectionControls(connection) : '') + page.html };
+}
+
+function authPage(id, state = {}) {
+  const route = AUTH_ROUTES.find(item => item.id === id);
+  const errors = state.errors || {};
+  const disabled = !state.ready || state.pending || (id === 'signup' && !state.signupEnabled) || (id === 'password' && !state.recoveryAllowed);
+  const hasPassword = ['login', 'signup', 'password'].includes(id);
+  const confirmsPassword = ['signup', 'password'].includes(id);
+  const labels = { login: 'Log in', signup: 'Create account', verification: 'Resend verification email', recovery: 'Send reset link', password: 'Update password' };
+  function field(name, label, type, autocomplete, extra = '') {
+    return `<div class="auth-field"><label for="auth-${name}">${label}</label><input id="auth-${name}" name="${name}" type="${type}" autocomplete="${autocomplete}" ${extra} required ${disabled ? 'disabled' : ''} aria-invalid="${Boolean(errors[name])}" aria-describedby="auth-${name}-error" ${name === 'email' ? `value="${escapeHtml(state.email || '')}"` : ''}><p id="auth-${name}-error" class="auth-error">${escapeHtml(errors[name] || '')}</p></div>`;
+  }
+  const description = ({ login: 'Welcome back. Use your approved beta account.', signup: 'Account access is available to approved beta clients.',
+    verification: 'Open the verification link in your email. Need a fresh link? Request one below.', recovery: 'Enter your email to request a password reset link.',
+    password: 'Open a valid recovery link from your email before choosing a new password.' })[id];
+  return { title: route.title, html: `<section class="auth-page" aria-labelledby="auth-heading"><a class="auth-back" href="#/home">← Back to OpsBrain</a><div class="panel auth-panel"><p class="eyebrow">YOUR OPSBRAIN ACCOUNT</p><h1 id="auth-heading">${route.title}</h1><p class="page-description">${description}</p>
+    <p id="auth-status" role="status" tabindex="-1">${escapeHtml(state.message || (!state.ready ? 'Account access is temporarily unavailable. Please try again later.' : id === 'signup' && !state.signupEnabled ? 'Sign up is currently limited to approved beta clients.' : ''))}</p>
+    <form id="auth-form" method="post" aria-busy="${Boolean(state.pending)}" novalidate>
+      ${id !== 'password' ? field('email', 'Email address', 'email', id === 'login' ? 'username' : 'email', 'maxlength="254" inputmode="email"') : ''}
+      ${hasPassword ? field('password', id === 'password' ? 'New password' : 'Password', 'password', id === 'login' ? 'current-password' : 'new-password', `maxlength="128" ${id === 'login' ? '' : 'minlength="12"'}`) : ''}
+      ${confirmsPassword ? `<p class="form-help">Use at least 12 characters. A password manager can create and save a strong password.</p>${field('confirmation', 'Confirm password', 'password', 'new-password', 'maxlength="128" minlength="12"')}` : ''}
+      <button class="button primary" type="submit" ${disabled ? 'disabled' : ''}>${state.pending ? 'Please wait…' : labels[id]}</button>
+    </form>
+    ${!state.ready && !state.pending ? '<button id="auth-retry" class="button secondary" type="button">Check account access</button>' : ''}
+    <nav class="auth-links" aria-label="Account options">${id !== 'login' ? '<a href="#/login">Log in</a>' : '<a href="#/signup">Create an account</a>'}<a href="#/recovery">Forgot your password?</a><a href="#/verification">Verify your email</a></nav>
+    </div></section>` };
 }
 
 function renderContent(id, options = {}) {

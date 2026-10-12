@@ -16,6 +16,7 @@ from functools import lru_cache
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from orchestrator.auth.routes import router as auth_router
 from orchestrator.graph import build_orchestrator_graph
 from orchestrator.llm import get_llm
 from orchestrator.memory import SessionMemory
@@ -47,6 +48,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="OpsBrain Orchestrator", version="0.2.0", lifespan=lifespan)
+app.include_router(auth_router)
 instrument_app(app, "orchestrator")
 
 memory = SessionMemory()

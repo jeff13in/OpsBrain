@@ -243,3 +243,27 @@ test('live monitoring refresh is wired and queries both snapshot endpoints', asy
   assert.ok(calls.includes('/api/monitoring/alerts/summary'), 'alerts summary endpoint was queried');
   assert.ok(calls.includes('/api/monitoring/pods/health'), 'pods health endpoint was queried');
 });
+
+test('connection controls work outside Overview, including disconnect and reconnect', async () => {
+  for (const route of ['home', 'chat', 'monitoring', 'history', 'components']) {
+    windowStub.location.hash = `#/${route}`;
+    windowStub.dispatch('hashchange');
+    for (const id of ['connect-live', 'use-demo', 'disconnect-api']) {
+      assert.ok(documentStub.getElementById(id)?.listeners.get('click')?.length, `${route}: ${id} must work`);
+    }
+  }
+  windowStub.location.hash = '#/monitoring';
+  windowStub.dispatch('hashchange');
+  fire(documentStub.getElementById('use-demo'), 'click');
+  assert.match(main.innerHTML, /Demo mode/);
+  windowStub.location.hash = '#/chat';
+  windowStub.dispatch('hashchange');
+  const before = fetchCalls.length;
+  fire(documentStub.getElementById('connect-live'), 'click');
+  await settle();
+  assert.ok(fetchCalls.slice(before).includes('/api/orchestrator/health'));
+  assert.match(main.innerHTML, /Live API connected/);
+  fire(documentStub.getElementById('disconnect-api'), 'click');
+  assert.doesNotMatch(main.innerHTML, /Live API connected/);
+  assert.match(main.innerHTML, /Connect live before submitting a question/);
+});

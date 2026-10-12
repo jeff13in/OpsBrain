@@ -72,15 +72,15 @@ function render(moveFocus = false) {
   toggle.setAttribute('aria-expanded', 'false');
   nav.classList.remove('is-open');
   if (moveFocus) main.focus();
-  if (route === 'dashboard') {
-    document.querySelector('#connect-live')?.addEventListener('click', () => {
-      activeHistoryId = null; monitoring.setActive(false); chat.setMode('live'); void api.connect();
+  document.querySelector('#connect-live')?.addEventListener('click', () => {
+    activeHistoryId = null; monitoring.setActive(false); chat.setMode('live'); void api.connect();
+  });
+  for (const [id, mode] of [['use-demo', 'demo'], ['disconnect-api', 'disconnected']]) {
+    document.getElementById(id)?.addEventListener('click', () => {
+      activeHistoryId = null; monitoring.setActive(false); api.disconnect(mode); chat.setMode(mode === 'demo' ? 'demo' : 'live');
     });
-    for (const [id, mode] of [['use-demo', 'demo'], ['disconnect-api', 'disconnected']]) {
-      document.getElementById(id)?.addEventListener('click', () => {
-        activeHistoryId = null; monitoring.setActive(false); api.disconnect(mode); chat.setMode(mode === 'demo' ? 'demo' : 'live');
-      });
-    }
+  }
+  if (route === 'dashboard') {
     if (moveFocus) {
       const stateSelect = document.querySelector('#demo-state');
       stateSelect?.focus();

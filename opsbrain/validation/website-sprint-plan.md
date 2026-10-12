@@ -1,9 +1,10 @@
 # Website sprint review and follow-up plan
 
 Reviewed 2026-10-11 against the current `web/` implementation and the backend
-routes it uses. This is the working website backlog from Week 4 onward. Ticket
-numbers OPU-92 through OPU-94 are proposed follow-ups; they are not claims that
-issues already exist in an external tracker.
+routes it uses; reconciled with the actual Linear roadmap on 2026-10-12 during OPU-92.
+OPU-92–98 now identify the seven Week 5 authentication/workspace issues.
+The former draft OPU-92–94 live-data deliverables below remain preserved as
+named follow-ups with issue IDs unassigned; they are not those Linear tickets.
 
 ## Review of the existing website sprints
 
@@ -11,16 +12,17 @@ issues already exist in an external tracker.
 | --- | --- | --- |
 | OPU-84 — foundation and visual design | Implemented locally; reusable UI, responsive navigation and safe static build are present. | Complete real-browser desktop/mobile, keyboard, focus, contrast and screen-reader acceptance in OPU-91. |
 | OPU-85 — landing page | Implemented locally with accurate product and access-limit copy. | Recheck links, responsive layout and public-facing wording on the hosted origin in OPU-91. |
-| OPU-86 — dashboard demo | Implemented locally with labelled synthetic states. | Replace the sparse live dashboard with truthful API status in OPU-92; demo fixtures remain available. |
+| OPU-86 — dashboard demo | Implemented locally with labelled synthetic states. | Replace the sparse live dashboard with truthful API status in Live-readiness follow-up; demo fixtures remain available. |
 | OPU-87 — demo chat | Implemented locally with citations, partial failures and escaped output. | Run browser acceptance in OPU-91. Preserve partial results and provenance in later live changes. |
-| OPU-88 — demo monitoring | Implemented locally with fixed charts and accessible value tables. | Add bounded live time-series data in OPU-93; synthetic charts must stay clearly labelled. |
-| OPU-89 — browser-local history | Implemented locally with expiry, validation and deletion. | Keep it demo-only until authenticated, account-scoped storage is delivered in OPU-94. |
+| OPU-88 — demo monitoring | Implemented locally with fixed charts and accessible value tables. | Add bounded live time-series data in Live-timeseries follow-up; synthetic charts must stay clearly labelled. |
+| OPU-89 — browser-local history | Implemented locally with expiry, validation and deletion. | Keep it demo-only until authenticated, account-scoped storage is delivered in Live-history follow-up. |
 | OPU-90 — local live API adapter | Implemented locally through an allowlisted localhost gateway. | Verify it against the real backend in OPU-91; production traffic requires protected same-origin routing. |
 | OPU-91 — hosted private preview | Planned and still the release gate. | Refine it with the acceptance criteria below before starting later live-data work. |
 
 The sequence remains intentionally incremental: OPU-91 establishes a private,
-testable deployment; OPU-92 and OPU-93 add truthful operational data; OPU-94
-adds durable user data only after identity is reliable.
+testable deployment. Week 5 adds client identity/workspaces; the preserved live
+readiness and time-series follow-ups add truthful operational data. Account-scoped
+live history also requires the separate client-data isolation gate.
 
 ## OPU-91 — private hosted preview and acceptance gate
 
@@ -65,7 +67,7 @@ Acceptance criteria:
 Out of scope: public signup, write-capable operational actions, real monitoring
 charts, server-side conversation history and production availability claims.
 
-## OPU-92 — live dashboard and service readiness
+## Live-readiness follow-up — live dashboard and service readiness
 
 **Goal:** make Overview useful in live mode without presenting a successful
 orchestrator health check as proof that every dependency is healthy.
@@ -98,7 +100,7 @@ Acceptance criteria:
 Depends on OPU-91. Out of scope: alert mutation, restart/deploy controls and
 arbitrary health targets supplied by the browser.
 
-## OPU-93 — live monitoring time-series
+## Live-timeseries follow-up — live monitoring time-series
 
 **Goal:** replace the live page's snapshot-only view with real CPU, memory and
 latency charts while retaining partial availability and accessible tables.
@@ -126,11 +128,11 @@ Acceptance criteria:
    keyboard/screen-reader users can inspect the same values.
 4. Demo mode remains deterministic and visually distinct from Live mode.
 
-Depends on OPU-91; use the OPU-92 status contract where useful. Out of scope:
+Depends on OPU-91; use the Live-readiness follow-up status contract where useful. Out of scope:
 arbitrary query consoles, dashboard editing, alert acknowledgement and long-term
 analytics storage.
 
-## OPU-94 — authenticated conversation history
+## Live-history follow-up — authenticated conversation history
 
 **Goal:** let an approved engineer resume live investigations across browser
 sessions without mixing identities or weakening the current retention limits.
@@ -164,14 +166,48 @@ Acceptance criteria:
 Depends on OPU-91. Out of scope: team sharing, exports, indefinite retention,
 full-text search and storing provider credentials or hidden model context.
 
-## Recommended order
+## Week 5 — authentication and client workspace
+
+The user inserted this week without changing Week 4. Actual OPU issues:
+
+| Issue | Work package | Priority | Dependencies |
+| --- | --- | --- | --- |
+| OPU-92 | Architecture & Project Audit | Urgent | Audit Week 4 prerequisites |
+| OPU-93 | Supabase Infrastructure Setup | Urgent | OPU-92 |
+| OPU-94 | Homepage Login & Signup | High | OPU-93 |
+| OPU-95 | Authentication Routing & Session Management | Urgent | OPU-93, OPU-94 |
+| OPU-96 | Client Workspace UI | High | OPU-95 |
+| OPU-97 | Workspace Data & Persistence | High | OPU-93, OPU-95, OPU-96 |
+| OPU-98 | Security, QA & Deployment Readiness | Urgent | OPU-92–97 |
+
+Architecture and verified source boundaries are in
+[the client workspace contract](../architecture/client-workspace.md).
+The first release is an approved-client beta. Saved client work is retained
+until the client deletes it; browser-local demo history keeps its existing
+72-hour behavior. Shared live integrations require explicit tenant isolation
+before becoming available to clients. Team collaboration, billing and uploads
+are later scope.
+
+## Week 6 — existing regression work preserved
+
+Linear's former Week 5: Regression Testing milestone is now Week 6: Regression
+Testing. All 15 existing issues, deliverables, owners, priorities and dependency
+relationships remain; its target moved from October 9 to October 16, 2026.
+No Week 7 or later milestone was found, so no missing work was invented.
+
+Week 5 calendar dates remain unset. Week 4 is incomplete, and the project's
+historical October 7 target precedes Week 6's October 16 target. Capacity,
+prerequisites and the actual delivery calendar must be reviewed before promising
+completion. Week labels express order, not an agreed current start date.
+
+## Preserved operational follow-up order
 
 1. Finish OPU-91 and record the hosted/browser acceptance evidence.
-2. Deliver OPU-92 so the live workspace reports useful, honest status.
-3. Deliver OPU-93 using the protected gateway and status conventions.
-4. Deliver OPU-94 only after authentication identity is stable and the retention
+2. Deliver Live-readiness follow-up so the live workspace reports useful, honest status.
+3. Deliver Live-timeseries follow-up using the protected gateway and status conventions.
+4. Deliver Live-history follow-up only after authentication identity is stable and the retention
    decision has an owner.
 
-OPU-92 and OPU-93 may be designed together, but they should remain separate
+Live-readiness follow-up and Live-timeseries follow-up may be designed together, but they should remain separate
 review units: status/readiness and time-series queries have different contracts,
 failure modes and security limits.

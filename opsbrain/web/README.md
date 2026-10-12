@@ -265,7 +265,7 @@ backend/model connectivity and browser visual/keyboard QA remain to be verified.
 ## Interface refinements
 
 Small UX improvements inside the existing demo/live architecture; they do
-not replace the OPU-92–94 live-data work:
+not replace the preserved live-readiness, time-series and account-history work:
 
 - Chat composers show a live character count (`n / 2000`) and submit with
   Cmd/Ctrl+Enter in addition to the submit button.
@@ -283,6 +283,15 @@ The reviewed backlog, dependencies and acceptance criteria are in the
 
 1. OPU-91: private hosted preview, two-email access controls, frontend CI,
    connected-API protection and browser/end-to-end acceptance.
-2. OPU-92: truthful live dashboard and per-service readiness.
-3. OPU-93: bounded live CPU, memory and latency time-series.
-4. OPU-94: authenticated, account-scoped live conversation history.
+2. Week 5 / OPU-92–98: architecture, Supabase, authentication, protected client
+   workspace, persistence and security/QA. See the
+   [architecture contract](../architecture/client-workspace.md).
+3. Week 6: the existing regression milestone and its 15 issues remain intact.
+4. Preserved operational follow-ups (issue IDs unassigned): truthful live
+   dashboard/readiness, bounded live time-series and account-scoped live history.
+   The former proposed OPU-92–94 numbers now belong to the actual auth tickets.
+
+The client release is an approved-client beta. Saved account work will remain
+until the client deletes it; existing browser-local demo history still expires
+after 72 hours. Authentication and account persistence are not implemented yet.
+Client live operational access requires verified workspace isolation.

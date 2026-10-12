@@ -16,7 +16,10 @@ Website foundation: [local two-engineer UI and frontend commands](opsbrain/web/R
 An owner-only static preview is deployed while OPU-91 completes two-person
 access, protected API hosting and browser acceptance.
 See the [reviewed website sprint plan](opsbrain/validation/website-sprint-plan.md)
-for OPU-84–91 status and the proposed OPU-92–94 follow-ups.
+for OPU-84–91 status, Week 5 authentication/workspace tickets OPU-92–98,
+and the preserved, unassigned operational follow-ups. The
+[client workspace architecture](opsbrain/architecture/client-workspace.md)
+records OPU-92's audit and the isolation gates for client access.
 
 ### Branches
 

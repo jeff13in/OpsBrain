@@ -9,6 +9,10 @@ All code lives in `opsbrain/`; run every command below from that folder unless
 it says otherwise. The full operations guide is [`opsbrain/README.md`](opsbrain/README.md),
 and the orchestrator/agent contract is [`opsbrain/orchestrator/CONTRACT.md`](opsbrain/orchestrator/CONTRACT.md).
 
+Week 1–3 audit: [ticket coverage, fixes and remaining acceptance](opsbrain/validation/weeks-1-3-audit.md).
+
+Week 2 completed: [integration tests, review and closure evidence](opsbrain/validation/week2-closure.md).
+
 Cycle 3 handoff: [async architecture](opsbrain/architecture/async-integration.md)
 and [OPU-52 review / Week 4 limitations](opsbrain/validation/OPU-52.md).
 
@@ -77,7 +81,7 @@ User (curl / CLI / Slack later)
 1. **Route.** With `LLM_API_KEY` set, Groq `gpt-oss-20b` picks the agents and rewrites
    follow-ups so they stand alone ("did it break them?" → "Did PR #42 break the
    api pods?"). Without a key, or if the model fails, is rate-limited (429) or takes
-   over 10s, whole-word keyword matching
+   over 10s, whole-word singular/plural keyword matching
    picks agents (e.g. *alert, prometheus* → monitoring; *pod, eks, rds* → infra;
    *pr, commit, pipeline* → code). Nothing matched → RAG.
 2. **Call agents in parallel.** Each agent gets `{question, request_id}` with its
@@ -90,6 +94,9 @@ User (curl / CLI / Slack later)
 4. **Respond.** HTTP **200** if at least one agent answered (`status: ok` or
    `partial`), **502** if none did (`status: error`). The body has the same shape
    either way.
+
+`question` must contain 5–2000 characters after trimming surrounding whitespace.
+Invalid input returns **422** before routing or any agent/provider call.
 
 ### Chat models (OPU-80)
 
@@ -181,7 +188,7 @@ survive in volumes.
 ```bash
 curl -s -X POST http://localhost:8001/ingest \
   -H "Content-Type: application/json" -d '{"directory": "/app/data"}'
-# → {"documents_processed": 2, "chunks_stored": ...}
+# → {"documents_processed": ..., "chunks_stored": ...} (counts depend on your docs/)
 ```
 
 ### 4. Ask the orchestrator
@@ -232,7 +239,7 @@ the agent returns an extractive fallback when generated citations don't check ou
 
 The local stack includes a demo exporter with one healthy pod (`demo/api-0`) and
 one crash-looping pod (`demo/worker-0`) that fires `DemoPodRestarting`. Wait
-~10s after startup, then:
+~30s after startup, then:
 ```bash
 curl -s "http://localhost:8002/pods/health?namespace=demo"
 curl -s http://localhost:8002/alerts/summary
@@ -283,7 +290,7 @@ OpsBrain/                      ← git repo root (github.com/jeff13in/OpsBrain)
     ├── infra/
     │   ├── prometheus/       scrape config + alert rules
     │   ├── alertmanager/     alert routing (local: no-op receiver)
-    │   ├── grafana/          datasource + "OpsBrain Monitoring Overview" dashboard
+    │   ├── grafana/          datasource + service-health and agent-activity dashboards
     │   └── terraform/        AWS infrastructure (VPC, EKS, RDS, S3); not applied yet
     ├── k8s/                  Kubernetes manifests; not deployed yet
     ├── tests/                unit + integration tests (run offline)
@@ -336,7 +343,7 @@ not imply full four-backend or production deployment acceptance.
 - **Infra/Code real-backend acceptance is deferred on this setup**; current
   pipeline evidence includes missing configuration and partial-result paths,
   not proof of successful AWS/Kubernetes/GitHub integration on this branch.
-- **Questions under 5 characters fail** ("hi" → RAG's 422 → HTTP 502); see `CONTRACT.md` gap 3.
+- **Short questions are rejected at the public boundary**: `/ask` returns 422 for fewer than 5 trimmed characters, before contacting agents.
 - **Provider quotas are account/model-specific**; consult the provider dashboard
   instead of assuming fixed daily free-tier capacity. Fallbacks preserve service
   behavior but do not increase provider quota.

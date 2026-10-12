@@ -57,7 +57,10 @@ DEFAULT_AGENT: AgentName = "rag"
 
 
 def _matches(question: str, keyword: str) -> bool:
-    return re.search(rf"\b{re.escape(keyword)}\b", question) is not None
+    # Common plural forms still name the same capability (alerts, pods,
+    # pull requests). Keep whole-word boundaries to avoid substring routing.
+    suffix = "s?" if not keyword.endswith("s") else ""
+    return re.search(rf"\b{re.escape(keyword)}{suffix}\b", question) is not None
 
 
 def route(question: str) -> RoutingDecision:

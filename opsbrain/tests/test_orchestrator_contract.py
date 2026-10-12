@@ -44,6 +44,17 @@ class RoutingTests(unittest.TestCase):
         # "pr" must not match inside "prometheus" / "production"
         self.assertNotIn("code", route("Is prometheus scraping production?").agents)
 
+    def test_plural_keywords_route_without_a_model(self) -> None:
+        for question, agents in (
+            ("Are alerts active?", ["monitoring"]),
+            ("List pods and nodes", ["infra"]),
+            ("List commits and pull requests", ["code"]),
+            ("Find runbooks and dashboards", ["rag", "monitoring"]),
+        ):
+            with self.subTest(question=question):
+                self.assertEqual(route(question).agents, agents)
+        self.assertEqual(route("Explain podcast subscriptions").agents, ["rag"])
+
 
 class NormalizationTests(unittest.TestCase):
     def test_rag_extras_are_kept_in_data(self) -> None:

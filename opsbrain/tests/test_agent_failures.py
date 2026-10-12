@@ -181,6 +181,55 @@ class CodeErrorStatusTests(unittest.TestCase):
 
 
 class CodeQueryEndpointTests(unittest.TestCase):
+    def test_pr_checks_do_not_report_unsuccessful_completion_as_success(self) -> None:
+        agent = CodeAgent(CodeConfig(github_repo="acme/app"))
+        for conclusion, expected in (
+            ("success", "success"), ("neutral", "success"), ("skipped", "success"),
+            ("failure", "failure"), ("cancelled", "failure"), ("timed_out", "failure"),
+            ("action_required", "failure"), ("startup_failure", "failure"), ("stale", "failure"),
+            (None, "unknown"), ("future_conclusion", "unknown"),
+        ):
+            with self.subTest(conclusion=conclusion), \
+                 patch.object(agent, "get_pull_request", return_value={"head_sha": "abc"}), \
+                 patch.object(agent, "_request_json", side_effect=[{"check_runs": [
+                     {"name": "CI", "status": "completed", "conclusion": conclusion}
+                 ]}, {"state": "pending", "total_count": 0}]):
+                response = self.query(agent, "Check PR #42")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["data"]["overall"], expected)
+
+    def test_pr_summary_includes_legacy_statuses_and_incomplete_check_pages(self) -> None:
+        agent = CodeAgent(CodeConfig(github_repo="acme/app"))
+        passed = {"name": "CI", "status": "completed", "conclusion": "success"}
+        for checks, legacy, expected in (
+            ([passed], {"state": "failure", "total_count": 1}, "failure"),
+            ([passed], {"state": "pending", "total_count": 1}, "pending"),
+            ([], {"state": "success", "total_count": 1}, "success"),
+            ([], {"state": "pending", "total_count": 0}, "unknown"),
+            ([passed], {"state": "success", "total_count": 1}, "success"),
+            ([passed], {"state": "future_state", "total_count": 1}, "unknown"),
+        ):
+            with self.subTest(legacy=legacy), \
+                 patch.object(agent, "get_pull_request", return_value={"head_sha": "abc"}), \
+                 patch.object(agent, "_request_json", side_effect=[{"check_runs": checks}, legacy]) as fetch:
+                response = self.query(agent, "Check PR #42")
+                self.assertEqual(response.json()["data"]["overall"], expected)
+                self.assertEqual(fetch.call_args_list[1].args[1], "/repos/acme/app/commits/abc/status")
+        with patch.object(agent, "get_pull_request", return_value={"head_sha": "abc"}), \
+             patch.object(agent, "_request_json", side_effect=[
+                 {"check_runs": [passed], "total_count": 101}, {"state": "pending", "total_count": 0}
+             ]):
+            self.assertEqual(self.query(agent, "Check PR #42").json()["data"]["overall"], "unknown")
+
+    def test_missing_commit_status_access_is_not_reported_as_passing_ci(self) -> None:
+        agent = CodeAgent(CodeConfig(github_repo="acme/app"))
+        with patch.object(agent, "get_pull_request", return_value={"head_sha": "abc"}), \
+             patch.object(agent, "_request_json", side_effect=[
+                 {"check_runs": [{"name": "CI", "status": "completed", "conclusion": "success"}]},
+                 CodeClientError("Commit status access denied", status_code=500)
+             ]):
+            self.assertEqual(self.query(agent, "Check PR #42").status_code, 500)
+
     def query(self, agent: CodeAgent, question: str) -> httpx.Response:
         with patch.object(code_main, "get_agent", return_value=agent):
             return TestClient(code_main.app).post("/query", json={"question": question})

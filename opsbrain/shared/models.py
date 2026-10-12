@@ -4,9 +4,9 @@ Define every cross-agent data shape here so each microservice speaks
 the same language without duplicating model code.
 """
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 # ── RAG Agent ────────────────────────────────────────────────────────────────
 
@@ -114,7 +114,7 @@ class RoutingDecision(BaseModel):
 
 class AskRequest(BaseModel):
     """Public request to the Orchestrator's /ask endpoint."""
-    question: str = Field(min_length=1, max_length=2000)
+    question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=2000)]
     session_id: str | None = None
 
 

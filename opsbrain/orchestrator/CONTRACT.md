@@ -39,7 +39,7 @@ POST /ask  AskRequest{question, session_id?}
 
 - `route()` always returns at least one agent; nothing matched → `rag` (`method="fallback"`).
 - Agents are returned in registry order: `rag, monitoring, infra, code`.
-- Keyword match is whole-word (`pr` doesn't match `prometheus`).
+- Keyword match accepts singular/plural whole words (`alert`/`alerts`, `pull request`/`pull requests`); `pr` does not match `prometheus`.
 - With `LLM_API_KEY` set, `get_chat_model("router")` classifies (`method="llm"`)
   and rewrites follow-ups using session history. Its default is Groq
   `openai/gpt-oss-20b`. Calls have a 10-second wall-clock deadline and zero SDK
@@ -176,7 +176,7 @@ readiness, deployment and authorization limitations.
    These do not guarantee whole-operation completion within the caller's 30s
    budget; synchronous work can continue after cancellation, and retries or
    sequential calls can exceed that budget.
-3. **RAG's `/query` requires `question` ≥ 5 characters.** Shorter questions get a 422, which maps to `bad_request`.
+3. **Public input validation:** `/ask` trims surrounding whitespace and requires 5–2000 characters, returning 422 before routing when invalid. RAG `/query` retains its own minimum of 5 characters. Other agent failures still follow the aggregation contract.
 4. **Memory is per process.** `k8s/orchestrator.yaml` runs 2 replicas, so a session's next
    turn can land on a pod that never saw it. This needs sticky sessions or a shared store
    (Postgres/Redis) before deploying (OPU-54).

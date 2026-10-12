@@ -146,3 +146,17 @@ coverage could not be checked because Linear is not connected in this session.
 OPU-52 was not marked Done. No GitHub approval, commit, push or deployment was
 performed. Install/connect Linear to verify the current closeout conditions and
 update OPU-52 if they are satisfied.
+
+
+## Week 1–3 audit: October 12, 2026
+
+Linear is connected for this review. OPU-51 remains In Review, so OPU-52's
+Done state was premature relative to its explicit dependency; OPU-52 is now
+In Review. OPU-44 integration evidence is ready for acceptance and OPU-46's
+dependency is restored. See [the complete audit](weeks-1-3-audit.md) for current
+coverage, local runtime/documentation fixes and fresh regression results.
+
+R4's HTTP-failure finding above is historical: the current workflow uses
+`curl --fail --silent --show-error --max-time 30` and checks accepted status
+codes. It still does not wait for ArgoCD sync/health or certify rollback.
+The other listed operating/release limitations remain open.

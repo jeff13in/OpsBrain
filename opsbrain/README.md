@@ -16,6 +16,10 @@ directory.
 
 ---
 
+Week 1–3 audit: [ticket coverage, fixes and remaining acceptance](validation/weeks-1-3-audit.md).
+
+Week 2 completed: [integration tests, review and closure evidence](validation/week2-closure.md).
+
 Cycle 3 handoff: [async architecture](architecture/async-integration.md) and
 [OPU-52 review / Week 4 limitations](validation/OPU-52.md).
 
@@ -443,7 +447,7 @@ $body = @{ question = "What should I do when CPU usage is high?"; top_k = 4 } | 
 Invoke-RestMethod -Uri http://localhost:8001/query -Method Post -ContentType "application/json" -Body $body
 ```
 
-- `question` — 5 to 2000 characters (shorter is rejected with `400`).
+- `question` — 5 to 2000 characters (schema violations return `422`; whitespace-only input that passes the length check returns `400`).
 - `top_k` — 1 to 10, default 4.
 - **Response fields:**
   - `answer` (string) — either real LLM-generated prose, or an extractive
@@ -534,21 +538,18 @@ Response: `{"query", "result_type", "result_count", "result": [...]}` — the
 `result` array is Prometheus's own raw result format, passed through mostly
 as-is.
 
-**What `up` will actually show you right now:** per
-`infra/prometheus/prometheus.yml`, every agent (orchestrator, rag, monitoring,
-infra, code) is configured as a Prometheus scrape target, but **none of them
-implement a `/metrics` endpoint yet** — that's explicit unfinished work, not
-a bug. Those 5 targets will show as `up == 0` (down). Only `prometheus`
-itself (self-scrape) and `demo-kube-state-metrics` (the fake `pod-metrics`
-exporter) will show as genuinely up.
+All five OpsBrain services expose `/metrics` through `shared/observability.py`
+and are configured as Prometheus scrape targets. Healthy, reachable services
+should report `up == 1`; `up == 0` indicates a scrape/startup problem. This
+checks endpoint availability, not AWS/GitHub/provider readiness. The demo
+exporter's pod metrics are fixtures.
 
 ### Scrape targets (Prometheus's own UI, not the agent)
 
 ```powershell
 Start-Process "http://localhost:9090/targets"
 ```
-Useful to see the same "5 agents down, 2 up" picture directly, and to check
-"Last Scrape" timestamps.
+Check each target's state, last scrape and last error while services start.
 
 ### Demo pod metrics
 
@@ -583,12 +584,13 @@ show stale results.
 ### Grafana dashboards
 
 ```powershell
-Invoke-RestMethod http://localhost:8002/dashboards/opsbrain-overview
+Invoke-RestMethod http://localhost:8002/dashboards/opsbrain-service-health
+Invoke-RestMethod http://localhost:8002/dashboards/opsbrain-agent-activity
 ```
-`opsbrain-overview` is the **verified real UID** — confirmed directly from
-`infra/grafana/dashboards/opsbrain-overview.json` (`"uid": "opsbrain-overview"`).
-That dashboard currently has exactly one panel ("Scrape Target Availability",
-the `up` metric — same caveat as above, most targets will show down).
+The tracked dashboard UIDs are `opsbrain-service-health` (availability,
+throughput, errors, latency, CPU and memory) and `opsbrain-agent-activity`
+(agent outcomes, latency, workflows and logs). Compose provisions them from
+`infra/grafana/dashboards/`; the earlier `opsbrain-overview` dashboard was removed.
 
 ```powershell
 $body = @{ datasource_uid = "prometheus"; expr = "up"; from_minutes_ago = 15 } | ConvertTo-Json
@@ -847,6 +849,15 @@ to actually use this endpoint, you'd need to add a Terraform install step to
 
 ## 5. Code Agent — port 8004
 
+PR CI summaries combine check runs and legacy commit statuses. Cancelled or
+timed-out checks yield `failure`; missing/unrecognized conclusions or truncated
+check-run pages yield `unknown`. This is diagnostic CI state, not merge approval.
+Private-repository tokens need read access to Checks and Commit statuses as well
+as the permissions for the other Code Agent endpoints. PR status lookup now
+makes one additional bounded GitHub request; the whole operation can still
+exceed the orchestrator's caller budget.
+
+
 Talks to the real GitHub REST API via plain `urllib` (no PyGithub
 dependency). Works unauthenticated against public repositories; needs a
 token for private repos or a higher rate limit.
@@ -1046,6 +1057,11 @@ Invoke-RestMethod http://localhost:8000/health
 $body = @{ question = "What should I do when CPU usage is high?" } | ConvertTo-Json
 Invoke-RestMethod -Uri http://localhost:8000/ask -Method Post -ContentType "application/json" -Body $body
 ```
+
+`question` must have 5–2000 characters after trimming surrounding whitespace.
+Invalid input returns 422 before routing or contacting agents/providers. Keyword
+fallback recognizes singular and plural terms such as `alert`/`alerts` and
+`commit`/`commits`, preserving whole-word matching.
 
 `/ask` invokes the asynchronous LangGraph pipeline: Groq routing (or keyword
 fallback), concurrent HTTP agent queries, then Groq synthesis for multiple

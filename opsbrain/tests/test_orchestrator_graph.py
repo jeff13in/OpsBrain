@@ -207,6 +207,22 @@ class AskEndpointTests(unittest.TestCase):
         self.assertEqual(resp.json()["status"], "error")
         self.assertEqual(resp.json()["results"][0]["error"]["code"], "unavailable")
 
+    def test_short_or_blank_questions_are_rejected_before_routing(self) -> None:
+        with patch.object(main, "get_graph") as get_graph:
+            for question in ("", "hi", "cpu", "    ", "  hi  ", "x" * 2001):
+                with self.subTest(question=question):
+                    resp = self.client.post("/ask", json={"question": question})
+                    self.assertEqual(resp.status_code, 422)
+            get_graph.assert_not_called()
+
+    def test_question_is_trimmed_before_calling_agents(self) -> None:
+        calls: list = []
+        self.use(build_orchestrator_graph(transport=agent_transport({"rag": ok("Restart it.", [])}, calls)))
+        resp = self.client.post("/ask", json={"question": "  What now?  "})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["question"], "What now?")
+        self.assertEqual(calls[0][1]["question"], "What now?")
+
     def test_session_history_is_passed_to_next_turn(self) -> None:
         llm = FakeLLM('{"agents": ["rag"], "standalone_question": "q"}')
         self.use(build_orchestrator_graph(llm=llm, transport=agent_transport({"rag": ok("use kubectl", [])})))

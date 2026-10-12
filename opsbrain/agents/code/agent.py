@@ -80,8 +80,16 @@ class CodeAgent:
         pr = self.get_pull_request(number)
         sha = pr["head_sha"]
         checks_payload = self._request_json(
-            "GET", f"/repos/{self.config.github_repo}/commits/{sha}/check-runs"
+            "GET", f"/repos/{self.config.github_repo}/commits/{sha}/check-runs", params={"per_page": 100}
         )
+        commit_status = self._request_json(
+            "GET", f"/repos/{self.config.github_repo}/commits/{sha}/status"
+        )
+        # GitHub's combined state includes all legacy status contexts, including
+        # those outside the first returned page. An empty status set is not a
+        # pending check when this repository uses check runs exclusively.
+        has_statuses = commit_status.get("total_count", 0) > 0
+        legacy_state = commit_status.get("state") if has_statuses else None
         check_runs = [
             {
                 "name": run.get("name"),
@@ -92,11 +100,14 @@ class CodeAgent:
         ]
         conclusions = Counter(run["conclusion"] or run["status"] for run in check_runs)
         overall = "success"
-        if any(run["conclusion"] == "failure" for run in check_runs):
+        if legacy_state in {"failure", "error"} or any(run["conclusion"] in {"failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"} for run in check_runs):
             overall = "failure"
-        elif any(run["status"] != "completed" for run in check_runs):
+        elif legacy_state == "pending" or any(run["status"] != "completed" for run in check_runs):
             overall = "pending"
-        elif not check_runs:
+        elif (not check_runs and not has_statuses
+              or has_statuses and legacy_state != "success"
+              or checks_payload.get("total_count", len(check_runs)) > len(check_runs)
+              or any(run["conclusion"] not in {"success", "neutral", "skipped"} for run in check_runs)):
             overall = "unknown"
         return {
             "number": number,
@@ -104,6 +115,10 @@ class CodeAgent:
             "overall": overall,
             "breakdown": dict(conclusions),
             "check_runs": check_runs,
+            "commit_status": {
+                "state": legacy_state,
+                "total_count": commit_status.get("total_count", 0),
+            },
         }
 
     # ── Commits ──────────────────────────────────────────────────────────

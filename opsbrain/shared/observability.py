@@ -36,6 +36,11 @@ AGENT_DURATION = Histogram(
     ("agent",),
     buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
 )
+AGENT_FAILURES = Counter(
+    "opsbrain_agent_failures_total",
+    "Failed orchestrator agent calls by bounded contract error code.",
+    ("agent", "error_code"),
+)
 WORKFLOWS = Counter(
     "opsbrain_orchestrator_workflows_total",
     "Orchestrator workflows by final status.",

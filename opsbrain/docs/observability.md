@@ -126,9 +126,9 @@ Standard Python process metrics supply CPU and memory panels.
 | `OpsBrainServiceUnavailable` | down 2m | Tolerates a missed scrape |
 | `OpsBrainPrometheusScrapeFailure` | rejected samples in 10m for 5m | Detects broken payloads/limits |
 | `OpsBrainHighHttpErrorRate` | >5% 5xx for 10m | Sustained degradation |
-| `OpsBrainHighRequestLatency` | p95 >2s for 10m | Initial API objective |
-| `OpsBrainRepeatedAgentFailures` | >=3 failures/10m for 5m | Ignores a single transient error |
-| `OpsBrainHighAgentLatency` | p95 >10s for 10m | Allows slower external dependencies |
+| `OpsBrainHighRequestLatency` | p95 >30s RAG, >45s orchestrator, >2s other services for 10m | Allows normal model-backed work |
+| `OpsBrainRepeatedAgentFailures` | >=3 timeout/unavailable/invalid-response outcomes per 10m for 5m | Excludes bad input and configuration/agent-error 500s; HTTP 5xx has a separate warning |
+| `OpsBrainHighAgentLatency` | p95 >45s RAG, >20s other agents for 10m | Warns near caller budgets |
 
 These are starting assumptions, not established SLOs. Tune them after a
 representative traffic period. Existing Alertmanager routing is reused.
@@ -179,3 +179,10 @@ python -m ruff check agents/ orchestrator/ shared/
 After deployment, verify targets, both dashboards, a Loki query, and a
 controlled stopped-service alert. Do not perform failure injection in
 production without an approved change.
+
+
+`opsbrain_agent_failures_total{agent,error_code}` counts final failed calls once
+using bounded contract error codes. `opsbrain_agent_executions_total` remains
+available with its original labels. Critical repeated-failure alerts select
+transport/timeouts and invalid responses; other 500s remain visible through the
+HTTP error-rate warning and the unfiltered counters.

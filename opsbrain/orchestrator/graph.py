@@ -41,7 +41,7 @@ from shared.models import (
     OverallStatus,
     RoutingDecision,
 )
-from shared.observability import AGENT_DURATION, AGENT_EXECUTIONS
+from shared.observability import AGENT_DURATION, AGENT_EXECUTIONS, AGENT_FAILURES
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ async def call_agent(
                         if attempt == 1 and error.retryable and error.code != "timeout":
                             continue
                         result = result_from_error(agent, error, _elapsed_ms(started))
-                        _observe_agent_result(agent, result.status, started)
+                        _observe_agent_result(agent, result.status, started, error.code)
                         return result
                     body = reply.body
                 else:
@@ -110,10 +110,10 @@ async def call_agent(
                 if attempt == 1 and error.retryable and error.code != "timeout":
                     continue
                 result = result_from_error(agent, error, _elapsed_ms(started))
-                _observe_agent_result(agent, result.status, started)
+                _observe_agent_result(agent, result.status, started, error.code)
                 return result
             result = result_from_reply(agent, body, _elapsed_ms(started))
-            _observe_agent_result(agent, result.status, started)
+            _observe_agent_result(agent, result.status, started, result.error.code if result.error else None)
             return result
     raise AssertionError("unreachable")  # pragma: no cover
 
@@ -122,10 +122,12 @@ def _elapsed_ms(started: float) -> int:
     return int((time.monotonic() - started) * 1000)
 
 
-def _observe_agent_result(agent: AgentName, status: str, started: float) -> None:
+def _observe_agent_result(agent: AgentName, status: str, started: float, error_code: str | None = None) -> None:
     if status != "ok":
         logger.warning("Agent %s completed with %s after %dms.", agent, status, _elapsed_ms(started))
     AGENT_EXECUTIONS.labels(agent, status).inc()
+    if error_code is not None:
+        AGENT_FAILURES.labels(agent, error_code).inc()
     AGENT_DURATION.labels(agent).observe(time.monotonic() - started)
 
 

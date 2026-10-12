@@ -148,3 +148,13 @@ redaction. Final suite: **309 passed, 1 skipped**. OPU-51/52 are Done for the
 verified implementation/review scope. Week 3 remains open for the four new
 Backlog tickets. See [current validation](week3-validation.md); preceding
 In Review states are historical snapshots.
+
+
+## Week 4 follow-up review
+
+The [Week 4 audit](week4-audit.md) reviews every outstanding active/legacy ticket
+and records retained observability alert/failure-classification fixes and fresh
+verification. The latest changes to Jeffin-assigned OPU-53/54/55/58 were reverted
+at the user’s request; those tickets are excluded from ongoing work.
+Deployment and hosted acceptance remain open; this follow-up does not turn
+controlled tests into real cloud acceptance.

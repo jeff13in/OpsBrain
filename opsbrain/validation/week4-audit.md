@@ -76,3 +76,11 @@ changes that instruction. Retained changes from this pass are observability
 metrics/alerts, their tests/runbook, shared/unassigned review notes and dependency
 links that do not modify Jeffin's tickets. No earlier Week 1–3 or already
 completed Jeffin work was reverted.
+
+
+## Assigned-to-Rifat follow-up
+
+The [assigned-scope follow-up](week4-rifat.md) resolves OPU-89’s retention
+mismatch and OPU-87/90’s missing routing/latency and stale-answer handling.
+Frontend regression: 122 passed. Earlier retention observations above are
+historical. Jeffin’s reverted work remains excluded; no deployment occurred.

@@ -13,6 +13,34 @@ const answer = (status = 'ok') => ({ ...structuredClone(CHAT_FIXTURES[status]), 
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status });
 const health = { agent: 'orchestrator', status: 'ok' };
 
+test('API retains validated routing and latency and renders them safely', () => {
+  const body = answer();
+  body.routing = { agents: body.results.map(item => item.agent), method: 'keyword', reason: '<img src=x onerror=alert(1)>' };
+  body.results[0].latency_ms = 42;
+  const result = validateAnswer(body, 'Valid question');
+  assert.equal(result.results[0].latency_ms, 42);
+  assert.deepEqual(result.routing, body.routing);
+  const html = renderPage('chat', { chatState: { turns: [{ question: 'Valid question', response: result, mode: 'live' }], draft: '', scenario: 'ok' } }).html;
+  assert.match(html, /Routing: keyword/);
+  assert.match(html, /Latency: 42 ms/);
+  assert.doesNotMatch(html, /<img/);
+  for (const routing of [{ ...body.routing, agents: ['rag'] }, { ...body.routing, method: 'unsafe' }]) {
+    assert.throws(() => validateAnswer({ ...body, routing }, 'Valid question'));
+  }
+  body.results[0].latency_ms = -1;
+  assert.throws(() => validateAnswer(body, 'Valid question'));
+});
+
+test('late live answers cannot survive a disconnect even when the transport ignores abort', async () => {
+  let complete;
+  const api = createApi({ request: path => path.endsWith('/health') ? Promise.resolve(response(health)) : new Promise(resolve => { complete = resolve; }) });
+  await api.connect();
+  const pending = api.ask('Valid question');
+  api.disconnect();
+  complete(response(answer()));
+  await assert.rejects(pending, /superseded/);
+});
+
 test('API stays demo until explicit health success and forwards questions with a session', async () => {
   const calls = [];
   const api = createApi({ sessionId: () => 'session-1', request: async (path, options) => {

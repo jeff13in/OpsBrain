@@ -51,3 +51,12 @@ automated checks do not establish that acceptance.
 
 No external tracker status was changed. No deployment, commit, push, backend or
 environment changes. Next ticket: OPU-88, monitoring charts and refresh controls.
+
+
+## Rifat’s assigned-scope follow-up — October 12, 2026
+
+See [local fixes and current acceptance](week4-rifat.md): history retention now
+uses last-message updates per OPU-89; API/chat preserve safe routing/latency;
+late answers cannot survive session/connection changes. All 122 frontend tests,
+syntax/build checks and the public credential-pattern scan pass. Prior
+implementation/results above are historical; browser/hosted gates remain open.

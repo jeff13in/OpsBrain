@@ -185,7 +185,8 @@ answer is not restored after reload. **New conversation** keeps saved history;
 **Delete** and **Delete all history** remove saved records and clear an affected
 active chat, including any pending response.
 
-Each record expires 72 hours after creation, even if reopened or continued.
+Each record expires 72 hours after its last completed message update. Opening
+a transcript or saving unchanged messages does not extend retention.
 Expired records are rejected on access and removed from storage on reads,
 navigation, tab visibility changes and minute checks while the page is visible.
 Cleanup requires the website to run; a closed browser cannot delete data on a

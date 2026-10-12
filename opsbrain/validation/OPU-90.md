@@ -56,3 +56,12 @@ work, host security headers, frontend CI and hosted end-to-end verification.
 Provider settings, Python services, Compose, environment files and infrastructure
 are untouched. No backend startup, provider query, deployment, commit or push.
 No external issue-tracker status change. Next: OPU-91.
+
+
+## Rifat’s assigned-scope follow-up — October 12, 2026
+
+See [local fixes and current acceptance](week4-rifat.md): history retention now
+uses last-message updates per OPU-89; API/chat preserve safe routing/latency;
+late answers cannot survive session/connection changes. All 122 frontend tests,
+syntax/build checks and the public credential-pattern scan pass. Prior
+implementation/results above are historical; browser/hosted gates remain open.

@@ -14,7 +14,7 @@ function setup() {
 }
 const turns = question => [{ question, response: CHAT_FIXTURES.partial }];
 
-test('saved conversations survive a fresh store and expiry stays anchored to creation', () => {
+test('message updates extend retention; opening and unchanged saves do not', () => {
   const env = setup();
   const id = env.history.save(null, turns('Why is the website slow?'));
   env.advance(HISTORY_TTL - 1);
@@ -24,6 +24,11 @@ test('saved conversations survive a fresh store and expiry stays anchored to cre
   assert.equal(fresh.save(id, [...turns('Why is the website slow?'), ...turns('What should I inspect next?')]), id);
   assert.equal(fresh.get(id).createdAt, created);
   env.advance(1);
+  assert.ok(fresh.get(id));
+  const updated = fresh.get(id).updatedAt;
+  assert.equal(fresh.save(id, fresh.get(id).turns), id);
+  assert.equal(fresh.get(id).updatedAt, updated);
+  env.advance(HISTORY_TTL - 1);
   assert.equal(fresh.get(id), null);
   assert.deepEqual(JSON.parse(env.values.get(HISTORY_KEY)).records, []);
   assert.equal(fresh.save(id, turns('Expired conversation question')), null);

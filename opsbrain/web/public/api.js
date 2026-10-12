@@ -13,13 +13,21 @@ export function validateAnswer(body, question) {
         (result.status === 'ok' ? !string(result.answer) || !result.answer.trim() : !string(result.error?.code, 100) || !string(result.error?.message, 2000)) ||
         (result.status !== 'ok' && result.sources.length)) throw new Error('Invalid agent result');
     seen.add(result.agent);
+    if (result.latency_ms !== undefined && (!count(result.latency_ms) || result.latency_ms > 86400000)) throw new Error('Invalid latency');
   }
+  const routing = body.routing;
+  if (routing !== undefined && (!routing || !['llm', 'keyword', 'fallback'].includes(routing.method) ||
+      !string(routing.reason, 2000) || !Array.isArray(routing.agents) || routing.agents.length !== seen.size ||
+      new Set(routing.agents).size !== seen.size || !routing.agents.every(agent => seen.has(agent)))) throw new Error('Invalid routing');
   const successful = body.results.filter(result => result.status === 'ok');
   const expected = successful.length === body.results.length ? 'ok' : successful.length ? 'partial' : 'error';
   if (body.status !== expected || body.sources.some(source => !successful.some(result => result.sources.includes(source)))) throw new Error('Inconsistent API answer');
-  return { status: body.status, answer: body.answer, sources: body.sources, results: body.results.map(result => ({
+  return { status: body.status, answer: body.answer, sources: body.sources,
+    ...(routing ? { routing: { method: routing.method, reason: routing.reason, agents: [...routing.agents] } } : {}),
+    results: body.results.map(result => ({
     agent: result.agent, status: result.status, answer: result.status === 'ok' ? result.answer : null,
     sources: result.sources, error: result.status === 'ok' ? null : { code: result.error.code, message: result.error.message },
+    ...(result.latency_ms !== undefined ? { latency_ms: result.latency_ms } : {}),
   })) };
 }
 
@@ -66,7 +74,9 @@ export function createApi({ request = fetch, onChange = () => {}, sessionId = ()
     },
     async ask(question) {
       if (state.mode !== 'live') throw new Error('Live API not connected');
+      const current = generation;
       const { body, status } = await json('orchestrator/ask', { method: 'POST', body: JSON.stringify({ question, session_id: session }) }, 90000);
+      if (current !== generation) throw new Error('Request superseded');
       const answer = validateAnswer(body, question);
       if ((status === 502) !== (answer.status === 'error')) throw new Error('Inconsistent HTTP status');
       return answer;

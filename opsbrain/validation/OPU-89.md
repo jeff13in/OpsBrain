@@ -54,3 +54,12 @@ storage writes/deletes can leave previously persisted disk data, as the UI warns
 
 No external tracker status change, deployment, commit or push. Next: OPU-90,
 read-only API adapter and deliberate demo/live transitions.
+
+
+## Rifat’s assigned-scope follow-up — October 12, 2026
+
+See [local fixes and current acceptance](week4-rifat.md): history retention now
+uses last-message updates per OPU-89; API/chat preserve safe routing/latency;
+late answers cannot survive session/connection changes. All 122 frontend tests,
+syntax/build checks and the public credential-pattern scan pass. Prior
+implementation/results above are historical; browser/hosted gates remain open.

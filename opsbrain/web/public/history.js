@@ -75,7 +75,7 @@ export function createHistory({ storage = () => window.localStorage, now = Date.
         } else records = [];
       } catch { unavailable(); }
     }
-    const retained = records.filter(record => record.createdAt + HISTORY_TTL > time);
+    const retained = records.filter(record => record.updatedAt + HISTORY_TTL > time);
     if (retained.length !== records.length) { records = retained; write(); }
     records.sort((a, b) => b.updatedAt - a.updatedAt);
     return records;
@@ -92,6 +92,7 @@ export function createHistory({ storage = () => window.localStorage, now = Date.
       const existing = records.find(record => record.id === recordId);
       // Expired/deleted conversations cannot be silently re-created with old turns.
       if (recordId && !existing) return null;
+      if (existing && JSON.stringify(existing.turns) === JSON.stringify(completed)) return existing.id;
       const time = now();
       const record = { id: existing?.id || id(), mode: 'demo', createdAt: existing?.createdAt ?? time, updatedAt: time, turns: completed };
       if (!validRecord(record, time)) return null;

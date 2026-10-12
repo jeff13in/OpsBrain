@@ -67,3 +67,11 @@ gateway/server deployment.
 The current working tree does not contain the approved viewer emails or a
 reachable protected backend origin. Those values must be configured through the
 hosting control plane, not committed to source.
+
+
+## User-directed deferral — October 12, 2026
+
+Hosted identity/access and protected API setup are preserved in OPU-105 at the
+user's request. No host change or publication occurred. See the
+[Rifat-only local review](week4-rifat.md) for current fixes/122-test evidence;
+OPU-91 remains open for unverified browser/hosted acceptance.

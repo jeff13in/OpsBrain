@@ -20,6 +20,8 @@ Week 1–3 audit: [ticket coverage, fixes and remaining acceptance](validation/w
 
 Week 2 completed: [integration tests, review and closure evidence](validation/week2-closure.md).
 
+Week 3 validation: [four-agent integration, fixes and live acceptance prerequisites](validation/week3-validation.md).
+
 Cycle 3 handoff: [async architecture](architecture/async-integration.md) and
 [OPU-52 review / Week 4 limitations](validation/OPU-52.md).
 

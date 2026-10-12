@@ -18,6 +18,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--transport", choices=["http", "kafka"], required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--all-agents", action="store_true",
+                        help="Also require successful RAG/Monitoring/Infra/Code fan-out; needs configured real backends.")
     args = parser.parse_args()
     checks = []
     with httpx.Client(timeout=120) as client:
@@ -28,10 +30,14 @@ def main():
                 checks.append({"name": "metrics", "port": port, "status": "passed" if valid else "failed"})
             except (httpx.HTTPError, ValueError) as exc:
                 checks.append({"name": "metrics", "port": port, "status": "failed", "error_type": type(exc).__name__})
-        for question, agents in [
+        questions = [
             ("Are any alerts firing?", ["monitoring"]),
             ("Check firing alerts and explain the documented troubleshooting procedure.", ["rag", "monitoring"]),
-        ]:
+        ]
+        if args.all_agents:
+            questions.append(("Explain the runbook procedure for firing alerts, EC2 infrastructure and recent commits.",
+                              ["rag", "monitoring", "infra", "code"]))
+        for question, agents in questions:
             started = time.monotonic()
             try:
                 response = client.post("http://localhost:8000/ask", json={"question": question})

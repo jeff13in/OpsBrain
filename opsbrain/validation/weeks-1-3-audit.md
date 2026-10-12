@@ -104,9 +104,10 @@ scope. The production sources and modified test modules pass.
 - CI configuration exists, but this session does not certify remote checks,
   image publication or branch protection. PR status is a diagnostic summary,
   not a certificate that branch protection permits merging.
-- Kafka still needs bounded queues, runtime consumer recovery and explicit
-  crash/delivery/idempotency semantics. Backend calls can outlive caller budgets.
-- Replica memory, backend error redaction, agent mutation authorization,
+- Kafka crash/delivery/idempotency semantics remain best-effort. Worker queue
+  bounds and runtime listener recovery were subsequently fixed in OPU-104.
+  Backend calls can outlive caller budgets.
+- Replica memory, agent mutation authorization,
   broker access controls and deployment manifests remain the documented
   operating/release follow-ups in `OPU-52.md`. ArgoCD's HTTP failure handling has
   since been fixed in the workflow; sync/health/rollback acceptance remains open.
@@ -124,3 +125,26 @@ relevant lint success. OPU-44 and OPU-46 are now Done. Legacy TES-24, TES-20
 and TES-22 are also closed against the same verified implementation and linked
 to active OPU coverage. Earlier In Review states above are audit history;
 Week 3/backend and Week 4 operational limits remain open.
+
+
+## Subsequent Week 3 validation
+
+[Week 3 validation](week3-validation.md) adds successful all-four-app Kafka
+integration, concurrent correlation and partial-failure checks with controlled
+backends. It fixes Code Agent's false PR #2 match for `procedure` + `EC2`.
+Fresh regression: **297 passed, 1 skipped**. Legacy implementation backlogs
+are closed with active coverage links. OPU-51/52 remain In Review because
+real all-four-backend acceptance is unavailable on this setup; the user has
+been asked whether to retain that gate or move it to an explicit follow-up.
+
+
+## Week 3 scope handoff and independent fixes
+
+The user requested separate Week 3 tickets for unavailable live acceptance.
+OPU-100–103 now preserve broker/provider, GitHub, AWS/Kubernetes and full live
+pipeline gates; OPU-103 depends on all three setup tickets. OPU-104 is Done for
+bounded Kafka worker admission, runtime listener recovery and Infra/Code error
+redaction. Final suite: **309 passed, 1 skipped**. OPU-51/52 are Done for the
+verified implementation/review scope. Week 3 remains open for the four new
+Backlog tickets. See [current validation](week3-validation.md); preceding
+In Review states are historical snapshots.

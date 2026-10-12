@@ -256,9 +256,11 @@ class CodeAgent:
         """
         self._require_repo()
         q = question.lower()
-        number_match = re.search(r"#?(\d+)", question)
-        if number_match and ("pr" in q or "pull request" in q or "#" in question):
-            number = int(number_match.group(1))
+        # A digit in EC2 plus "pr" inside "procedure" is not a PR reference.
+        # Bind the number to an explicit PR/pull-request marker (or #number).
+        number_match = re.search(r"\b(?:pr|pull\s+request)\s*#?\s*(\d+)\b|#(\d+)\b", q)
+        if number_match:
+            number = int(number_match.group(1) or number_match.group(2))
             status = self.get_pull_request_status(number)
             return {
                 "answer": (

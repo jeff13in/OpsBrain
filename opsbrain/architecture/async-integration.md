@@ -122,7 +122,9 @@ thread. AWS has per-attempt connect/read limits and up to two attempts;
 Kubernetes/GitHub have per-call limits. Retries or sequential backend calls can
 continue after the caller gives up. Late replies cannot change a finished answer.
 Two transport attempts plus routing/synthesis may exceed one agent's budget.
-There is no single whole-`/ask` deadline or bounded worker submission queue.
+There is no single whole-`/ask` deadline. Worker submissions are bounded to
+four running plus 32 queued requests by default; overload returns 503 without
+launching backend work. Completion/cancellation releases capacity.
 
 ## Models and memory: preserved migration flow
 
@@ -145,8 +147,10 @@ storage/sticky routing is needed for reliable cross-replica follow-ups.
 `/health` is not complete backend readiness; verify actual read-only dependency
 queries and a grounded `/ask`. Metrics/logging/alerts are documented in the
 [observability guide](../docs/observability.md). Initial Kafka connections retry
-with backoff; a consumer that exits after startup currently needs a service
-restart, not an automatic application reconnect loop.
+with backoff. Worker/reply listeners reconnect after runtime failure, pausing
+one second before reconnecting. Reply-listener loss clears readiness and fails
+in-flight requests; new requests resume after assignment. This restores future
+requests, not the already failed calls.
 
 Local Kafka is a single development broker without production TLS/ACLs.
 Auto-committed offsets are not tied to handler completion/reply publication:
@@ -157,3 +161,10 @@ Offline tests exercise serialized in-memory transport/injected backends.
 [OPU-60](../validation/OPU-60.md) and [OPU-61](../validation/OPU-61.md) separately
 record real-broker resilience. The [review](../validation/OPU-52.md) distinguishes
 those from live-provider checks and deferred GitHub/AWS/Kubernetes acceptance.
+
+
+Infra/Code service boundaries retain backend status classification but return
+generic client errors; upstream bodies, URLs and exception text are omitted
+from responses and boundary/recovery logs. Infra partial-health data also uses
+safe per-check errors. See [Week 3 validation](../validation/week3-validation.md)
+for controlled tests and the separate live acceptance tickets.

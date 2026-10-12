@@ -122,8 +122,12 @@ class AgentWorker:
         producer_factory: ProducerFactory = _kafka_producer,
         consumer_factory: ConsumerFactory = _kafka_consumer,
         max_concurrency: int = 4,
+        max_queue: int = 32,
         clock: Callable[[], float] = time.time,
     ) -> None:
+        if max_concurrency < 1 or max_queue < 0:
+            raise ValueError("Worker concurrency must be positive and queue size nonnegative.")
+        self._slots = threading.BoundedSemaphore(max_concurrency + max_queue)
         self.app = app
         self.agent = agent
         self.query_path = query_path
@@ -148,25 +152,57 @@ class AgentWorker:
         self._pool.shutdown(wait=False, cancel_futures=True)
 
     def _run(self) -> None:
-        self._producer = _connect(self._producer_factory, self._stop, "producer")
-        consumer = _connect(
-            # "earliest": requests published before this worker's first assignment
-            # are still picked up; expired ones are dropped by the deadline check.
-            lambda: self._consumer_factory(request_topic(self.agent), f"{self.agent}-agent", "earliest"),
-            self._stop, "consumer",
-        )
-        if self._producer is None or consumer is None:
-            if self._producer is not None:
+        while not self._stop.is_set():
+            self._producer = _connect(self._producer_factory, self._stop, "producer")
+            consumer = _connect(
+                lambda: self._consumer_factory(request_topic(self.agent), f"{self.agent}-agent", "earliest"),
+                self._stop, "consumer",
+            )
+            if self._producer is None or consumer is None:
+                if self._producer is not None:
+                    _close(self._producer)
+                return
+            logger.info("%s agent listening on %s", self.agent, request_topic(self.agent))
+            try:
+                consumer.listen(self._submit, stop=self._stop)
+            except Exception as exc:  # noqa: BLE001 - reconnect any failed listener
+                logger.warning("%s Kafka consumer stopped (%s); reconnecting.", self.agent, type(exc).__name__)
+            finally:
+                _close(consumer)
                 _close(self._producer)
+            self._stop.wait(1.0)
+
+    def _submit(self, raw: dict[str, Any]) -> None:
+        if self._stop.is_set():
             return
-        logger.info("%s agent listening on %s", self.agent, request_topic(self.agent))
+        if not self._slots.acquire(blocking=False):
+            # Keep the executor bounded and give callers a retryable failure;
+            # never launch backend work for an overloaded request.
+            try:
+                request = KafkaAgentRequest.model_validate(raw)
+            except ValidationError:
+                logger.warning("Dropping malformed request while %s is overloaded.", self.agent)
+                return
+            if request.agent == self.agent and self._clock() < request.deadline:
+                reply = KafkaAgentReply(correlation_id=request.correlation_id, agent=self.agent,
+                                       status_code=503, body={"detail": "Agent worker is at capacity."})
+                self._publish_reply(request.reply_topic, reply)
+            return
         try:
-            consumer.listen(lambda raw: self._pool.submit(self.handle, raw), stop=self._stop)
-        except Exception:
-            logger.exception("%s agent's Kafka consumer stopped unexpectedly.", self.agent)
-        finally:
-            _close(consumer)
-            _close(self._producer)
+            future = self._pool.submit(self.handle, raw)
+        except RuntimeError:  # shutdown raced with admission
+            self._slots.release()
+            return
+        future.add_done_callback(lambda _: self._slots.release())
+
+    def _publish_reply(self, topic: str, reply: KafkaAgentReply) -> None:
+        producer = self._producer
+        if producer is None:
+            return
+        try:
+            producer.send(topic, reply)
+        except Exception as exc:  # noqa: BLE001 - broker failures must not crash workers
+            logger.warning("Could not publish reply %s (%s).", reply.correlation_id, type(exc).__name__)
 
     def handle(self, raw: dict[str, Any]) -> KafkaAgentReply | None:
         """Answer one request and publish the reply. Returns the reply (None if skipped)."""
@@ -192,13 +228,7 @@ class AgentWorker:
             logger.warning("%s failed request %s (%s).", self.agent, request.correlation_id, type(exc).__name__)
             reply = KafkaAgentReply(correlation_id=request.correlation_id, agent=self.agent, status_code=500,
                                    body={"detail": "Agent failed to produce a serializable response."})
-        if self._producer is None:
-            return reply  # not connected (only reachable when handle() is called directly)
-        try:
-            self._producer.send(request.reply_topic, reply)
-        except Exception as exc:  # noqa: BLE001 - broker failures must not crash workers
-            # The Orchestrator will report this agent as timed out.
-            logger.warning("Could not publish reply %s (%s).", request.correlation_id, type(exc).__name__)
+        self._publish_reply(request.reply_topic, reply)
         return reply
 
     def _call_query(self, query: AgentQuery) -> tuple[int, Any]:
@@ -280,23 +310,24 @@ class KafkaAgentBus:
             self._thread.join(timeout=5)
 
     def _run(self) -> None:
-        self._producer = _connect(self._producer_factory, self._stop, "producer")
-        # "latest": a new process has no use for replies sent before it started.
-        consumer = _connect(lambda: self._consumer_factory(self.reply_topic, self.group_id, "latest"), self._stop, "consumer")
-        if self._producer is None or consumer is None:
-            if self._producer is not None:
+        while not self._stop.is_set():
+            self._producer = _connect(self._producer_factory, self._stop, "producer")
+            consumer = _connect(lambda: self._consumer_factory(self.reply_topic, self.group_id, "latest"), self._stop, "consumer")
+            if self._producer is None or consumer is None:
+                if self._producer is not None:
+                    _close(self._producer)
+                return
+            logger.info("Orchestrator listening for agent replies on %s (group %s)", self.reply_topic, self.group_id)
+            try:
+                consumer.listen(self._on_reply, stop=self._stop, on_ready=self._ready.set)
+            except Exception as exc:  # noqa: BLE001 - reconnect any failed listener
+                logger.warning("Kafka reply consumer stopped (%s); reconnecting.", type(exc).__name__)
+            finally:
+                self._ready.clear()
+                self._fail_pending()
+                _close(consumer)
                 _close(self._producer)
-            return
-        logger.info("Orchestrator listening for agent replies on %s (group %s)", self.reply_topic, self.group_id)
-        try:
-            consumer.listen(self._on_reply, stop=self._stop, on_ready=self._ready.set)
-        except Exception:
-            logger.exception("Orchestrator's Kafka reply consumer stopped unexpectedly.")
-        finally:
-            self._ready.clear()
-            self._fail_pending()
-            _close(consumer)
-            _close(self._producer)
+            self._stop.wait(1.0)
 
     def _on_reply(self, raw: dict[str, Any]) -> None:
         try:

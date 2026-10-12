@@ -160,3 +160,19 @@ R4's HTTP-failure finding above is historical: the current workflow uses
 `curl --fail --silent --show-error --max-time 30` and checks accepted status
 codes. It still does not wait for ArgoCD sync/health or certify rollback.
 The other listed operating/release limitations remain open.
+
+
+## User-directed handoff and local completion — October 12, 2026
+
+The user requested separate Week 3 issues for unavailable live setup/acceptance
+and fixes to unrelated defects. OPU-100–103 preserve that work in Week 3,
+with the final live gate depending on all three setup tickets. OPU-51/52
+are Done for verified implementation/review scope; the milestone remains open.
+
+R5 (unbounded executor admissions), R7 (no runtime consumer recovery) and R10
+(backend error exposure) above are now resolved locally under OPU-104. The
+[updated architecture](../architecture/async-integration.md) and [validation](week3-validation.md)
+record bounded capacity/503 overload, listener reconnection, redacted errors,
+**309 passed / 1 skipped**, and controlled regression tests. Historical evidence
+and prior findings are retained above; real backend acceptance is not implied.
+R6/R8/R9 and deployment/access-control limitations remain documented.

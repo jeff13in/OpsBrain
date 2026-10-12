@@ -92,6 +92,10 @@ With `AGENT_TRANSPORT=kafka` the same `/query` call travels over Kafka (`shared/
   One handler failure is logged without its payload and does not stop consumption.
 - Request cancellation removes pending state. Bus shutdown or loss of the reply
   consumer fails pending requests as `unavailable` instead of leaving them waiting.
+- Worker admission is bounded (four running + 32 queued by default); overload
+  replies with 503 without backend execution and follows the existing one-retry rule.
+- Worker and reply listeners reconnect after runtime failure. Pending calls fail
+  on reply-listener loss; future requests resume after consumer assignment.
 - Kafka refusing the publish, or the Orchestrator not being connected yet, is `unavailable`
   (retried once). An agent that's down simply never replies, so it shows up as `timeout`, not
   `unavailable` as it would over HTTP.
@@ -184,3 +188,9 @@ readiness, deployment and authorization limitations.
    `opsbrain-secrets/llm-api-key`; RAG also needs
    `opsbrain-secrets/google-api-key` for unchanged Gemini embeddings. Apply
    `k8s/chat-config.yaml` before deploying the updated images.
+
+
+Infra/Code query and typed endpoint errors now preserve HTTP classifications
+while returning generic messages; upstream error bodies/URLs are not exposed
+in the response or boundary logs. Partial Infra health data is also redacted.
+See [Week 3 validation and follow-ups](../validation/week3-validation.md).

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from typing import Any
 
@@ -11,6 +12,22 @@ from pydantic import BaseModel, Field
 from agents.infra.agent import InfraAgent, InfraClientError
 from shared.agent_bus import attach_kafka_worker
 from shared.observability import instrument_app
+
+logger = logging.getLogger(__name__)
+
+
+def backend_error(exc: InfraClientError) -> HTTPException:
+    # Upstream bodies and connection URLs may contain credentials. Preserve
+    # classification without exposing backend text in responses or logs.
+    logger.warning("Infra backend request failed (status %d, %s).", exc.status_code, type(exc).__name__)
+    messages = {
+        503: "Infra backend unavailable.",
+        500: "Infra backend configuration or request failed.",
+        404: "Infra resource not found.",
+        400: "Invalid Infra backend request.",
+    }
+    return HTTPException(status_code=exc.status_code, detail=messages.get(exc.status_code, "Infra request failed."))
+
 
 app = FastAPI(
     title="OpsBrain Infra Agent",
@@ -85,7 +102,7 @@ def query(request: QueryRequest) -> dict[str, Any]:
     try:
         return get_agent().ask(request.question)
     except InfraClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/aws/instances", response_model=Ec2ListResponse)
@@ -93,7 +110,7 @@ def list_instances(state: str | None = Query(default=None)) -> Ec2ListResponse:
     try:
         return Ec2ListResponse(**get_agent().list_ec2_instances(state=state))
     except InfraClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/aws/instances/summary")
@@ -101,7 +118,7 @@ def instances_summary() -> dict[str, Any]:
     try:
         return get_agent().summarize_ec2()
     except InfraClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/k8s/pods", response_model=PodHealthResponse)
@@ -109,7 +126,7 @@ def pod_health(namespace: str | None = Query(default=None, min_length=1)) -> Pod
     try:
         return PodHealthResponse(**get_agent().get_pod_health(namespace=namespace))
     except InfraClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/k8s/nodes", response_model=NodeListResponse)
@@ -117,7 +134,7 @@ def list_nodes() -> NodeListResponse:
     try:
         return NodeListResponse(**get_agent().list_nodes())
     except InfraClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/terraform/plan")
@@ -125,7 +142,7 @@ def terraform_plan(plan_file: str | None = Query(default=None)) -> dict[str, Any
     try:
         return get_agent().get_terraform_plan_summary(plan_file=plan_file)
     except InfraClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/k8s/deployments", response_model=DeploymentListResponse)
@@ -133,7 +150,7 @@ def list_deployments(namespace: str | None = Query(default=None, min_length=1)) 
     try:
         return DeploymentListResponse(**get_agent().list_deployments(namespace=namespace))
     except InfraClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/k8s/usage")
@@ -141,7 +158,7 @@ def node_resource_usage() -> dict[str, Any]:
     try:
         return get_agent().get_node_resource_usage()
     except InfraClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/aws/eks", response_model=EksListResponse)
@@ -149,7 +166,7 @@ def list_eks_clusters() -> EksListResponse:
     try:
         return EksListResponse(**get_agent().list_eks_clusters())
     except InfraClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/aws/rds", response_model=RdsListResponse)
@@ -157,7 +174,7 @@ def list_rds_instances() -> RdsListResponse:
     try:
         return RdsListResponse(**get_agent().list_rds_instances())
     except InfraClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/health/summary")

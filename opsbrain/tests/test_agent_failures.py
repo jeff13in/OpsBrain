@@ -139,7 +139,7 @@ class InfraQueryEndpointTests(unittest.TestCase):
         with patch.object(agent, "list_nodes", side_effect=InfraClientError("cluster unreachable")):
             resp = self.query(agent, "list k8s nodes")
         self.assertEqual(resp.status_code, 503)
-        self.assertEqual(resp.json()["detail"], "cluster unreachable")
+        self.assertEqual(resp.json()["detail"], "Infra backend unavailable.")
 
     def test_config_failure_is_500(self) -> None:
         resp = self.query(infra_agent(kubeconfig_path="/nonexistent/kubeconfig"), "list k8s nodes")
@@ -237,7 +237,7 @@ class CodeQueryEndpointTests(unittest.TestCase):
     def test_missing_repo_is_500_not_a_200_answer(self) -> None:
         resp = self.query(CodeAgent(CodeConfig(github_repo="")), "any open PRs?")
         self.assertEqual(resp.status_code, 500)
-        self.assertIn("GITHUB_REPO", resp.json()["detail"])
+        self.assertEqual(resp.json()["detail"], "Code backend configuration or request failed.")
 
     def test_unknown_pr_is_404(self) -> None:
         agent = CodeAgent(CodeConfig(github_repo="acme/app", github_token="t"))

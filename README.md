@@ -13,6 +13,8 @@ Week 1–3 audit: [ticket coverage, fixes and remaining acceptance](opsbrain/val
 
 Week 2 completed: [integration tests, review and closure evidence](opsbrain/validation/week2-closure.md).
 
+Week 3 validation: [four-agent integration, fixes and live acceptance prerequisites](opsbrain/validation/week3-validation.md).
+
 Cycle 3 handoff: [async architecture](opsbrain/architecture/async-integration.md)
 and [OPU-52 review / Week 4 limitations](opsbrain/validation/OPU-52.md).
 
@@ -252,7 +254,8 @@ Expected: two demo pods (one healthy, one degraded), one active
 `POST /query` plus typed endpoints: `/aws/instances`, `/aws/instances/summary`,
 `/aws/eks`, `/aws/rds`, `/k8s/pods`, `/k8s/nodes`, `/k8s/deployments`,
 `/k8s/usage`, `/terraform/plan`, `/health/summary`. Without AWS credentials or a
-kubeconfig these return **500** with a message saying what's missing.
+kubeconfig these return **500** with a safe generic configuration error.
+Check the required environment settings and `/health` capability information.
 
 ### Code Agent (:8004)
 `POST /query` plus `/pulls`, `/pulls/{n}`, `/pulls/{n}/status`, `/commits`,

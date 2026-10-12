@@ -359,7 +359,7 @@ class InfraAgent:
             try:
                 return {"ok": True, "data": fn()}
             except InfraClientError as exc:
-                return {"ok": False, "error": str(exc)}
+                return {"ok": False, "error": f"Infra backend check failed (HTTP {exc.status_code})."}
 
         with ThreadPoolExecutor(max_workers=len(checks)) as pool:
             futures = {name: pool.submit(_run, fn) for name, fn in checks.items()}

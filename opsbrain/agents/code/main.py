@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from typing import Any
 
@@ -11,6 +12,22 @@ from pydantic import BaseModel, Field
 from agents.code.agent import CodeAgent, CodeClientError
 from shared.agent_bus import attach_kafka_worker
 from shared.observability import instrument_app
+
+logger = logging.getLogger(__name__)
+
+
+def backend_error(exc: CodeClientError) -> HTTPException:
+    # Upstream bodies and connection URLs may contain credentials. Preserve
+    # classification without exposing backend text in responses or logs.
+    logger.warning("Code backend request failed (status %d, %s).", exc.status_code, type(exc).__name__)
+    messages = {
+        503: "Code backend unavailable.",
+        500: "Code backend configuration or request failed.",
+        404: "Code resource not found.",
+        400: "Invalid Code backend request.",
+    }
+    return HTTPException(status_code=exc.status_code, detail=messages.get(exc.status_code, "Code request failed."))
+
 
 app = FastAPI(
     title="OpsBrain Code Agent",
@@ -79,7 +96,7 @@ def query(request: QueryRequest) -> dict[str, Any]:
     try:
         return get_agent().ask(request.question)
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/pulls", response_model=PullRequestListResponse)
@@ -90,7 +107,7 @@ def list_pulls(
     try:
         return PullRequestListResponse(**get_agent().list_pull_requests(state=state, limit=limit))
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/pulls/{number}")
@@ -98,7 +115,7 @@ def get_pull(number: int) -> dict[str, Any]:
     try:
         return get_agent().get_pull_request(number)
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/pulls/{number}/status")
@@ -106,7 +123,7 @@ def get_pull_status(number: int) -> dict[str, Any]:
     try:
         return get_agent().get_pull_request_status(number)
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/actions/runs", response_model=WorkflowRunListResponse)
@@ -120,7 +137,7 @@ def list_runs(
             **get_agent().list_workflow_runs(branch=branch, status=status, limit=limit)
         )
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/actions/summary")
@@ -128,7 +145,7 @@ def actions_summary(branch: str | None = Query(default=None)) -> dict[str, Any]:
     try:
         return get_agent().summarize_ci(branch=branch)
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/commits", response_model=CommitListResponse)
@@ -139,7 +156,7 @@ def list_commits(
     try:
         return CommitListResponse(**get_agent().list_commits(branch=branch, limit=limit))
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/commits/{sha}")
@@ -147,7 +164,7 @@ def get_commit(sha: str) -> dict[str, Any]:
     try:
         return get_agent().get_commit(sha)
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/deployments", response_model=DeploymentListResponse)
@@ -160,7 +177,7 @@ def list_deployments(
             **get_agent().list_deployments(environment=environment, limit=limit)
         )
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.get("/deployments/{deployment_id}/status")
@@ -168,7 +185,7 @@ def get_deployment_status(deployment_id: int) -> dict[str, Any]:
     try:
         return get_agent().get_deployment_status(deployment_id)
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.post("/actions/runs/{run_id}/rerun")
@@ -178,7 +195,7 @@ def rerun_workflow(
     try:
         return get_agent().rerun_workflow(run_id, failed_jobs_only=failed_jobs_only)
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc
 
 
 @app.post("/actions/workflows/{workflow}/dispatch")
@@ -188,4 +205,4 @@ def trigger_workflow(workflow: str, request: WorkflowDispatchRequest) -> dict[st
             workflow, ref=request.ref, inputs=request.inputs
         )
     except CodeClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        raise backend_error(exc) from exc

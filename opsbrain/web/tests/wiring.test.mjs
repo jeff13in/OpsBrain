@@ -69,7 +69,8 @@ function registerFromHtml(html) {
   }
   for (const [, name, value] of html.matchAll(/\sdata-([a-z-]+)(?:="([^"]*)")?/g)) {
     if (!dataRegistry.has(name)) dataRegistry.set(name, []);
-    dataRegistry.get(name).push(new StubElement({ dataset: { [name]: value ?? '' } }));
+    const datasetKey=name.replace(/-([a-z])/g,(_,char)=>char.toUpperCase());
+    dataRegistry.get(name).push(new StubElement({ dataset: { [datasetKey]: value ?? '' } }));
   }
   for (const match of html.matchAll(/<(textarea|select|input)[^>]*>/g)) {
     const nameMatch = /\sname="([^"]+)"/.exec(match[0]);
@@ -142,7 +143,7 @@ globalThis.fetch = async (url, options) => {
   const path = String(url).replace(/^https?:\/\/[^/]+/, '');
   fetchCalls.push(path);
   fetchDetails.push({ path, options });
-  const body = responses[path];
+  const body = typeof responses[path]==='function'?responses[path](options):responses[path];
   return body
     ? { status: 200, text: async () => JSON.stringify(body) }
     : { status: 404, text: async () => '{"error":"not found"}' };
@@ -359,4 +360,21 @@ test('workspace read failure clears personalization and retry restores authorize
   assert.match(main.innerHTML, /could not be loaded/);
   prepareWorkspace(); fire(documentStub.getElementById('workspace-retry'), 'click'); await settle();
   assert.match(main.innerHTML, /Welcome back, Client A/);
+});
+
+test('write-enabled project form posts a scoped CSRF mutation and reloads persisted data',async()=>{
+ prepareWorkspace();
+ const data=responses[`/api/workspaces/${workspaceId}/summary`];data.profile={display_name:'Client A',version:1,preferences:{default_section:'dashboard',reduced_motion:false}};
+ data.capabilities={project_writes:true,preferences:true,saved_work:true,activity:false,live_tools:false};
+ const page={records:[],next_cursor:null};responses[`/api/workspaces/${workspaceId}/records/projects`]=page;
+ responses[`/api/workspaces/${workspaceId}/records/saved_work`]={records:[],next_cursor:null};
+ responses[`/api/workspaces/${workspaceId}/mutations`]=options=>{
+  const command=JSON.parse(options.body);const row={id:command.record_id,workspace_id:workspaceId,title:command.changes.title,version:1,updated_at:'2026-10-12T00:00:00Z'};
+  page.records.push(row);return {id:row.id,version:1,deleted:false};
+ };
+ windowStub.location.hash='#/workspace/projects';windowStub.dispatch('hashchange');await settle();
+ documentStub.getElementById('project-title').value='New account project';fire(documentStub.getElementById('project-create'),'submit');await settle();
+ assert.match(main.innerHTML,/New account project/);
+ const call=fetchDetails.find(c=>c.path.endsWith('/mutations'));assert.equal(call.options.headers['X-CSRF-Token'],'b'.repeat(32));
+ assert.equal(JSON.parse(call.options.body).operation,'project.create');
 });

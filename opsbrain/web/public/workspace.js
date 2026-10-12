@@ -17,7 +17,10 @@ export function validateWorkspaceSummary(body, workspaceId) {
   if (!body || body.workspace?.id !== workspaceId || !uuid.test(workspaceId) || typeof body.workspace.name !== 'string'
     || !body.workspace.name.trim() || body.workspace.name.length > 120 || typeof body.profile?.display_name !== 'string'
     || body.profile.display_name.length > 120 || !Array.isArray(body.recent_projects) || body.recent_projects.length > 10
-    || !['project_writes', 'preferences', 'activity', 'live_tools'].every(key => body.capabilities?.[key] === false)) return null;
+    || !['project_writes', 'preferences'].every(key => typeof body.capabilities?.[key] === 'boolean')
+    || body.capabilities.activity !== false || body.capabilities.live_tools !== false) return null;
+  if (body.capabilities.preferences && (!Number.isSafeInteger(body.profile.version) || body.profile.version < 1
+    || !['dashboard','projects','tools'].includes(body.profile.preferences?.default_section) || typeof body.profile.preferences.reduced_motion !== 'boolean')) return null;
   const ids = new Set();
   for (const row of body.recent_projects) {
     if (!row || typeof row.id !== 'string' || !uuid.test(row.id) || ids.has(row.id) || typeof row.title !== 'string'
@@ -27,7 +30,9 @@ export function validateWorkspaceSummary(body, workspaceId) {
     ids.add(row.id);
   }
   // Copy only permitted fields; extra provider/response metadata is discarded.
-  return { workspace: { id: workspaceId, name: body.workspace.name }, profile: { display_name: body.profile.display_name },
+  return { workspace: { id: workspaceId, name: body.workspace.name }, profile: { display_name: body.profile.display_name,
+    ...(body.capabilities.preferences ? {version:body.profile.version,preferences:{default_section:body.profile.preferences.default_section,reduced_motion:body.profile.preferences.reduced_motion}} : {}) },
+    capabilities:{project_writes:body.capabilities.project_writes,preferences:body.capabilities.preferences,saved_work:body.capabilities.saved_work===true},
     recent_projects: body.recent_projects.map(({ id, title, updated_at, version }) => ({ id, title, updated_at, version })) };
 }
 

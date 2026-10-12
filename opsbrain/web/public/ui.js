@@ -1,6 +1,7 @@
 import { HISTORY_TTL } from './history.js';
 import { AUTH_ROUTES } from './auth.js';
 import { WORKSPACE_SECTIONS } from './workspace.js';
+import { accountPayload } from './persistence.js';
 import { DEMO_FIXTURE, DEMO_STATES, demoState } from './demo.js';
 import { CHAT_SCENARIOS } from './chat.js';
 import { METRICS, MONITORING_RANGES, MONITORING_SCENARIOS } from './monitoring.js';
@@ -281,7 +282,28 @@ function clientWorkspace(options) {
     body = `<p class="client-demo-notice">Demo only · synthetic examples · browser-local history · no live operational access</p><a class="auth-back" href="#/workspace/tools">← All software tools</a>` + child.replace(/<h1\b/g, '<h2').replace(/<\/h1>/g, '</h2>');
     if (section === 'demo-history') body = body.replace(/href="#\/chat"/g, 'href="#/workspace/demo-chat"');
   }
+  const records=options.persistenceState;
+  if(data.capabilities?.project_writes&&section==='projects')body=accountRecords(records);
+  if(data.capabilities?.preferences&&section==='settings'){
+    const profile=data.profile,prefs=profile.preferences,disabled=records?.status!=='ready'||records?.pending;
+    body=`<section class="panel client-panel"><h2>Profile & preferences</h2><form id="profile-edit" class="account-record-form"><label for="profile-name">Display name</label><input id="profile-name" name="display_name" maxlength="120" value="${escapeHtml(profile.display_name)}"><label for="profile-start">Start page</label><select id="profile-start" name="default_section">${['dashboard','projects','tools'].map(id=>`<option value="${id}" ${prefs.default_section===id?'selected':''}>${id}</option>`).join('')}</select><label class="auto-refresh-label"><input name="reduced_motion" type="checkbox" ${prefs.reduced_motion?'checked':''}> Reduce motion</label><button class="button primary" ${disabled?'disabled':''}>Save account settings</button></form>${recordFeedback(records)}</section>`;
+  }
+  if(section==='demo-chat'&&data.capabilities?.saved_work){
+    const payload=accountPayload(options.chatState?.turns),disabled=!payload||records?.status!=='ready'||records.pending||!records.projects.length;
+    body+=`<section class="panel client-panel"><h2>Save this demo investigation to your account</h2><p>This creates an account record. Browser demo history stays separate. Saved work remains until you delete it.</p><form id="save-investigation" class="account-record-form"><label for="save-title">Investigation title</label><input id="save-title" name="title" maxlength="200" required><label for="save-project">Project</label><select id="save-project" name="project" required>${records?.projects.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.title)}</option>`).join('')||''}</select><button class="button primary" ${disabled?'disabled':''}>Save to account</button></form>${records?.nextProjects?'<button id="more-projects" type="button" class="button secondary">Load more project choices</button>':''}<p class="form-help">Requires a project and a completed demo conversation within 128 KiB.</p>${recordFeedback(records)}</section>`;
+  }
   return { title, html: `<div class="client-workspace">${header}${body}</div>` };
+}
+
+function recordFeedback(state){return `<p id="account-save-status" role="status" tabindex="-1">${escapeHtml(state?.message||'')}</p>${state?.retry?'<button id="save-retry" class="button secondary" type="button">Retry failed save</button>':''}`;}
+function accountRecords(state){
+  if(state?.status!=='ready')return `<section class="panel client-panel"><h2>Account projects & saved work</h2><p role="status">${state?.status==='error'?escapeHtml(state.message):'Loading account records…'}</p>${state?.status==='error'?'<button id="records-retry" class="button secondary" type="button">Reload records</button>':''}</section>`;
+  const disabled=state.pending?'disabled':'';
+  const deletion=(kind,row)=>`<details><summary>Delete ${kind==='project'?'project':'investigation'}</summary><p>${kind==='project'?'Deleting this project also deletes its saved investigations.':'This removes the account investigation.'} Backups may retain older copies.</p><button class="button secondary" type="button" data-record-delete="${kind}:${escapeHtml(row.id)}" ${disabled}>Confirm deletion</button></details>`;
+  const projects=state.projects.map(p=>`<li><label for="title-${escapeHtml(p.id)}">Project title</label><input id="title-${escapeHtml(p.id)}" value="${escapeHtml(p.title)}" maxlength="200"><button type="button" class="button secondary" data-project-rename="${escapeHtml(p.id)}" ${disabled}>Save title</button>${deletion('project',p)}</li>`).join('');
+  const saved=state.saved.map(row=>`<li><strong>${escapeHtml(row.title)}</strong><span class="small-label">DEMO · ACCOUNT SAVED</span><button type="button" class="button secondary" data-saved-open="${escapeHtml(row.id)}" ${disabled}>Reopen</button>${deletion('saved',row)}</li>`).join('');
+  const selected=state.selected;
+  return `<section class="panel client-panel"><h2>Projects</h2><form id="project-create" class="account-record-form"><label for="project-title">New project title</label><input id="project-title" name="title" maxlength="200" required><button class="button primary" ${disabled}>Create project</button></form><ul class="client-project-list account-record-form">${projects||'<li>No projects yet.</li>'}</ul>${state.nextProjects?`<button id="more-projects" type="button" class="button secondary" ${disabled}>More projects</button>`:''}${recordFeedback(state)}</section><section class="panel client-panel"><h2>Saved investigations</h2><p>Retained until you delete them. Account records are separate from browser demo history.</p><ul class="client-project-list">${saved||'<li>No account investigations saved yet.</li>'}</ul>${state.nextSaved?`<button id="more-saved" type="button" class="button secondary" ${disabled}>More saved work</button>`:''}</section>${selected?`<section class="panel client-panel"><h2>${escapeHtml(selected.title)}</h2><p>Demo investigation · account saved · sources and agent outcomes preserved</p><form id="saved-rename" class="account-record-form"><label for="saved-title">Investigation title</label><input id="saved-title" name="title" value="${escapeHtml(selected.title)}" maxlength="200" required><button class="button secondary" ${disabled}>Save investigation title</button></form>${selected.payload.turns.map((turn,i)=>`<p class="chat-text">${escapeHtml(turn.question)}</p>${chatResponse(turn.response,i,'demo')}`).join('')}</section>`:''}`;
 }
 
 function authPage(id, state = {}) {

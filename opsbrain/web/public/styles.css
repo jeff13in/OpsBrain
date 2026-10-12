@@ -269,5 +269,9 @@
   #workspace-label-copy { overflow-wrap: anywhere; }
   @media (max-width: 950px) { .client-grid, .client-tool-grid { grid-template-columns: 1fr; } }
   @media (max-width: 430px) { .client-header { flex-direction: column; } .client-panel, .client-welcome { padding: 20px; } .client-details { grid-template-columns: 1fr; gap: 8px; } }
+  .account-record-form input:not([type="checkbox"]), .account-record-form select { max-width: 100%; min-width: 0; width: 100%; min-height: 44px; padding: 10px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+  .account-record-form label { display: block; margin: 12px 0 6px; font-size: 14px; }
+  .account-record-form .button { margin: 12px 0; }
+  .account-reduced-motion * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
 }

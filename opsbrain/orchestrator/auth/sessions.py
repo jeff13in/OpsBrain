@@ -27,6 +27,11 @@ class WorkspaceUnavailable(Exception):
     """The requested workspace is not accessible."""
 
 
+class PersistenceError(Exception):
+    def __init__(self, status):
+        self.status = status
+
+
 @dataclass
 class SessionRecord:
     session_hash: str
@@ -201,6 +206,9 @@ class SessionManager:
                 pass
 
     def workspace_summary(self, cookie, workspace_id):
+        return self.workspace_action(cookie, workspace_id, 'workspace_summary')
+
+    def workspace_action(self, cookie, workspace_id, action, *args):
         principal = self.authenticate(cookie)
         if principal is None:
             raise InvalidIdentity()
@@ -213,4 +221,4 @@ class SessionManager:
             if record is None or now >= record.expires_at or now - record.last_seen_at >= self.idle_seconds:
                 raise InvalidIdentity()
             access, _ = self._tokens(record)
-            return self.provider.workspace_summary(access, principal.user_id, workspace_id)
+            return getattr(self.provider, action)(access, principal.user_id, workspace_id, *args)

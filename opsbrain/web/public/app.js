@@ -7,6 +7,7 @@ import { createChat, demoReply } from './chat.js';
 import { demoStateFromHash } from './demo.js';
 import { clientNavigation, landingSectionFromHash, navigation, renderPage, routeFromHash, validateDraft } from './ui.js';
 import { createWorkspace, workspaceDemoRoute, workspaceSectionFromHash } from './workspace.js';
+import { accountPayload, createPersistence } from './persistence.js';
 
 const main = document.querySelector('#main');
 const nav = document.querySelector('#workspace-navigation');
@@ -16,13 +17,22 @@ function contentRoute() {
   const root = routeFromHash(window.location.hash);
   return root === 'workspace' ? workspaceDemoRoute(window.location.hash) || root : root;
 }
+const persistence = createPersistence({ sendMutation:command=>accountSession.mutate(command), onChange(){
+  if(routeFromHash(window.location.hash)==='workspace')render();
+},onSaved(){return workspace.load(accountSession.snapshot().workspaceId);} });
 const workspace = createWorkspace({ onChange() {
-  if (routeFromHash(window.location.hash) === 'workspace') { render(); document.getElementById('workspace-data-status')?.focus(); }
+  if (routeFromHash(window.location.hash) === 'workspace') {
+    const state=workspace.snapshot();
+    if(state.status==='error')persistence.leave();
+    render(); document.getElementById('workspace-data-status')?.focus();
+    if(state.status==='ready'&&state.data.capabilities.project_writes&&persistence.snapshot().workspaceId!==state.workspaceId)void persistence.load(state.workspaceId);
+    if(state.status==='ready'&&window.location.hash==='#/workspace'&&state.data.profile.preferences?.default_section&&state.data.profile.preferences.default_section!=='dashboard')window.location.hash=`#/workspace/${state.data.profile.preferences.default_section}`;
+  }
 }, onUnauthorized(destination) { accountSession.leave(); window.location.hash = destination; } });
 const accountSession = createProtectedSession({ onChange() {
   if (routeFromHash(window.location.hash) !== 'workspace') return;
   const state = accountSession.snapshot();
-  if (state.status !== 'authorized') workspace.leave();
+  if (state.status !== 'authorized') { workspace.leave(); persistence.leave(); }
   render(); document.getElementById('workspace-status')?.focus();
   if (state.status === 'authorized' && workspace.snapshot().workspaceId !== state.workspaceId) void workspace.load(state.workspaceId);
 }, onRedirect(destination) { window.location.hash = destination; } });
@@ -92,9 +102,10 @@ function render(moveFocus = false) {
     const records = historyFilter ? historyState.records.filter(record => record.turns[0].question.toLowerCase().includes(historyFilter.toLowerCase())) : historyState.records;
     historyState = { ...historyState, records, total };
   }
-  const page = renderPage(root, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState, historyFilter, connectionState: api.snapshot(), authState: auth.snapshot(), protectedState: accountSession.snapshot(), workspaceState: workspace.snapshot(), workspaceSection: workspaceSectionFromHash(window.location.hash) });
+  const page = renderPage(root, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState, historyFilter, connectionState: api.snapshot(), authState: auth.snapshot(), protectedState: accountSession.snapshot(), workspaceState: workspace.snapshot(), workspaceSection: workspaceSectionFromHash(window.location.hash), persistenceState:persistence.snapshot() });
   nav.innerHTML = root === 'workspace' ? clientNavigation(workspaceSectionFromHash(window.location.hash)) : navigation(route);
   const data = root === 'workspace' && accountSession.snapshot().status === 'authorized' ? workspace.snapshot().data : null;
+  document.body?.classList.toggle('account-reduced-motion',Boolean(data?.profile.preferences?.reduced_motion));
   const label = document.getElementById('workspace-label-copy');
   if (label) label.textContent = data?.workspace.name || (root === 'workspace' ? 'Client workspace' : 'Engineer workspace');
   const mode = document.getElementById('workspace-mode');
@@ -111,8 +122,29 @@ function render(moveFocus = false) {
   if (moveFocus) main.focus();
   document.querySelector('#account-refresh')?.addEventListener('click', () => { void accountSession.load(); });
   document.querySelector('#workspace-retry')?.addEventListener('click', () => { void workspace.load(accountSession.snapshot().workspaceId); });
+  document.querySelector('#records-retry')?.addEventListener('click',()=>{void persistence.load(accountSession.snapshot().workspaceId);});
+  document.querySelector('#save-retry')?.addEventListener('click',()=>{void persistence.retry();});
+  for(const [id,kind] of [['more-projects','projects'],['more-saved','saved_work']])document.getElementById(id)?.addEventListener('click',()=>{void persistence.more(kind);});
+  document.querySelector('#project-create')?.addEventListener('submit',event=>{event.preventDefault();const form=new FormData(event.currentTarget);void persistence.save('project.create',crypto.randomUUID(),0,{title:String(form.get('title')||'').trim()});});
+  document.querySelectorAll('[data-project-rename]').forEach(button=>button.addEventListener('click',()=>{
+    const row=persistence.snapshot().projects.find(r=>r.id===button.dataset.projectRename);
+    const title=document.getElementById(`title-${row?.id}`)?.value.trim();if(row&&title)void persistence.save('project.update',row.id,row.version,{title});
+  }));
+  document.querySelectorAll('[data-record-delete]').forEach(button=>button.addEventListener('click',()=>{
+    const [kind,id]=button.dataset.recordDelete.split(':');const row=(kind==='project'?persistence.snapshot().projects:persistence.snapshot().saved).find(r=>r.id===id);
+    if(row)void persistence.save(`${kind}.delete`,id,row.version,{});
+  }));
+  document.querySelectorAll('[data-saved-open]').forEach(button=>button.addEventListener('click',()=>{void persistence.open(button.dataset.savedOpen);}));
+  document.querySelector('#saved-rename')?.addEventListener('submit',event=>{event.preventDefault();const row=persistence.snapshot().selected;const form=new FormData(event.currentTarget);if(row)void persistence.save('saved.update',row.id,row.version,{title:String(form.get('title')||'').trim(),payload:row.payload});});
+  document.querySelector('#save-investigation')?.addEventListener('submit',event=>{event.preventDefault();const form=new FormData(event.currentTarget),payload=accountPayload(chat.snapshot().turns);
+    if(payload)void persistence.save('saved.create',crypto.randomUUID(),0,{title:String(form.get('title')||'').trim(),project_id:form.get('project'),payload});
+  });
+  document.querySelector('#profile-edit')?.addEventListener('submit',event=>{event.preventDefault();const form=new FormData(event.currentTarget),profile=workspace.snapshot().data?.profile;
+    if(profile)void persistence.save('profile.update',null,profile.version,{display_name:String(form.get('display_name')||''),preferences:{default_section:form.get('default_section'),reduced_motion:form.get('reduced_motion')==='on'}});
+  });
   document.querySelector('#account-logout')?.addEventListener('click', () => {
     workspace.leave();
+    persistence.leave();
     activeHistoryId = null; chat.clear(); monitoring.setActive(false); api.disconnect('demo');
     void accountSession.logout();
   });
@@ -267,6 +299,7 @@ window.addEventListener('hashchange', () => {
   auth.leave();
   accountSession.leave();
   workspace.leave();
+  persistence.leave();
   if (enteringClient) {
     activeHistoryId = null; api.disconnect('demo'); chat.setMode('demo');
   }

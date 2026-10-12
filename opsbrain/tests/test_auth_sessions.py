@@ -13,6 +13,8 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
+from orchestrator.auth.persistence import SavedPayload
+from orchestrator.auth.persistence import router as persistence_router
 from orchestrator.auth.provider import SupabaseProvider
 from orchestrator.auth.routes import get_boundary, router, set_session_cookie
 from orchestrator.auth.sessions import (
@@ -77,6 +79,10 @@ class ProviderFixture:
         return {'workspace': {'id': workspace_id, 'name': 'My workspace'},
                 'profile': {'display_name': 'Client A'}, 'recent_projects': [],
                 'capabilities': {'project_writes': False, 'preferences': False, 'activity': False, 'live_tools': False}}
+
+    def mutate(self, access, user_id, workspace_id, request_id, operation, record_id, version, changes):
+        self.last_mutation=(user_id,workspace_id,operation,record_id,changes)
+        return {'id':user_id if operation=='profile.update' else record_id,'version':version+1,'deleted':operation.endswith('.delete')}
 
 
 @pytest.fixture
@@ -222,6 +228,7 @@ def client(setup):
     settings = AuthSettings(_env_file=None, app_env='production', app_origin='https://app.example.test')
     app = FastAPI()
     app.include_router(router)
+    app.include_router(persistence_router)
     app.dependency_overrides[get_boundary] = lambda: (settings, manager)
     with TestClient(app, base_url='https://app.example.test') as browser:
         yield browser
@@ -373,3 +380,30 @@ def test_settings_require_tls_and_mask_private_values():
     settings.app_origin = 'https://app.example.test'
     with pytest.raises(ValueError):
         settings.validate_setup()
+
+
+def test_persistence_mutations_require_origin_csrf_and_server_owned_identity(client,setup):
+    manager,_,provider,_,_,cookie,_=setup
+    client.cookies.set('__Host-opsbrain_session',cookie)
+    command={'request_id':OTHER,'operation':'profile.update','record_id':None,'expected_version':1,
+             'changes':{'display_name':'User','preferences':{'default_section':'projects','reduced_motion':True}}}
+    headers={'Origin':'https://app.example.test','X-CSRF-Token':manager.csrf_token(cookie)}
+    url=f'/api/workspaces/{WORKSPACE}/mutations'
+    assert client.post(url,json=command).status_code==403
+    assert client.post(url,json=command,headers=headers).status_code==200
+    assert provider.last_mutation[0]==USER
+    command['record_id']=OTHER
+    assert client.post(url,json=command,headers=headers).status_code==422
+    assert client.post(f'/api/workspaces/{OTHER}/mutations',json={**command,'record_id':None},headers=headers).status_code==404
+
+
+def test_persistence_rejects_forged_owner_hidden_context_and_live_provenance(client,setup):
+    manager,_,_,_,_,cookie,_=setup
+    client.cookies.set('__Host-opsbrain_session',cookie)
+    command={'request_id':OTHER,'record_id':OTHER,'operation':'project.create','expected_version':0,'changes':{'title':'Project','owner_id':OTHER}}
+    headers={'Origin':'https://app.example.test','X-CSRF-Token':manager.csrf_token(cookie)}
+    response=client.post(f'/api/workspaces/{WORKSPACE}/mutations',json=command,headers=headers)
+    assert response.status_code==422 and 'owner_id' not in response.text
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        SavedPayload.model_validate({'mode':'live','turns':[]})

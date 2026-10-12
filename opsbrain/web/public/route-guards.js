@@ -62,5 +62,13 @@ export function createProtectedSession({ fetcher = (...args) => globalThis.fetch
       return false;
     }
   }
-  return { snapshot, load, logout, leave };
+  async function mutate(command) {
+    if (state.status !== 'authorized') throw new Error('Authentication required');
+    const current = generation;
+    const result = await request(`/api/workspaces/${state.workspaceId}/mutations`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify(command) });
+    if (current !== generation) throw new Error('Cancelled mutation');
+    return result;
+  }
+  return { snapshot, load, logout, leave, mutate };
 }

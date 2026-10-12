@@ -7,6 +7,7 @@ import httpx
 
 from orchestrator.auth.sessions import (
     InvalidIdentity,
+    PersistenceError,
     ProviderUnavailable,
     WorkspaceUnavailable,
 )
@@ -75,7 +76,7 @@ class SupabaseProvider:
         workspaces = self._request('GET', f'/rest/v1/workspaces?select=id,name&id=eq.{workspace_id}&limit=1', access=access)
         if not isinstance(workspaces, list) or len(workspaces) != 1:
             raise WorkspaceUnavailable()
-        profiles = self._request('GET', f'/rest/v1/profiles?select=user_id,display_name&user_id=eq.{user_id}&limit=1', access=access)
+        profiles = self._request('GET', f'/rest/v1/profiles?select=user_id,display_name,preferences,version&user_id=eq.{user_id}&limit=1', access=access)
         projects = self._request('GET', '/rest/v1/projects?select=id,workspace_id,title,updated_at,version'
                                  f'&workspace_id=eq.{workspace_id}&order=updated_at.desc,id.asc&limit=10', access=access)
         try:
@@ -100,8 +101,56 @@ class SupabaseProvider:
                     raise ProviderUnavailable()
                 recent.append({'id': str(UUID(project['id'])), 'title': project['title'],
                                'updated_at': updated.isoformat(), 'version': project['version']})
+            persistence = type(profile.get('version')) is int and isinstance(profile.get('preferences'), dict)
             return {'workspace': {'id': workspace_id, 'name': workspace['name']},
-                    'profile': {'display_name': profile['display_name']}, 'recent_projects': recent,
-                    'capabilities': {'project_writes': False, 'preferences': False, 'activity': False, 'live_tools': False}}
+                    'profile': {key: profile[key] for key in ('display_name','preferences','version') if key in profile}, 'recent_projects': recent,
+                    'capabilities': {'project_writes': persistence, 'preferences': persistence, 'saved_work': persistence, 'activity': False, 'live_tools': False}}
         except (KeyError, TypeError, ValueError) as exc:
             raise ProviderUnavailable() from exc
+
+    def _data_request(self, method, path, access, payload=None):
+        try:
+            with httpx.Client(timeout=5, follow_redirects=False, transport=self._transport) as client:
+                response = client.request(method, self.origin + path, headers={'apikey': self._key, 'Authorization': 'Bearer ' + access}, json=payload)
+            if len(response.content) > 262144:
+                raise ProviderUnavailable()
+            if response.status_code == 401:
+                raise InvalidIdentity()
+            if response.status_code not in (200, 201):
+                try:
+                    code = response.json().get('code')
+                except (ValueError, AttributeError):
+                    code = None
+                status = {'40001':409,'23505':409,'P0002':404,'42501':403,'23514':422,'23503':422,'22023':422,'54000':429}.get(code,503)
+                raise PersistenceError(status)
+            return response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ProviderUnavailable() from exc
+
+    def list_records(self, access, user_id, workspace_id, kind, cursor, limit):
+        fields = 'id,workspace_id,title,updated_at,version' + (',project_id,owner_id' if kind == 'saved_work' else ',creator_id')
+        path = f'/rest/v1/{kind}?select={fields}&workspace_id=eq.{workspace_id}&order=id.asc&limit={limit+1}'
+        if cursor:
+            path += f'&id=gt.{UUID(cursor)}'
+        rows = self._data_request('GET', path, access)
+        if not isinstance(rows,list) or len(rows)>limit+1:
+            raise ProviderUnavailable()
+        for row in rows:
+            if row.get('workspace_id')!=workspace_id or row.get('owner_id',row.get('creator_id'))!=user_id:
+                raise ProviderUnavailable()
+        return {'records':rows[:limit],'next_cursor':rows[limit-1]['id'] if len(rows)>limit else None}
+
+    def read_record(self, access, user_id, workspace_id, kind, record_id):
+        fields = 'id,workspace_id,title,updated_at,version' + (',project_id,owner_id,payload' if kind == 'saved_work' else ',creator_id')
+        page = self._data_request('GET', f'/rest/v1/{kind}?select={fields}&workspace_id=eq.{workspace_id}&id=eq.{UUID(record_id)}&limit=1', access)
+        if not isinstance(page,list) or len(page)!=1:
+            raise WorkspaceUnavailable()
+        row=page[0]
+        if row.get('workspace_id')!=workspace_id or row.get('owner_id',row.get('creator_id'))!=user_id:
+            raise WorkspaceUnavailable()
+        return row
+
+    def mutate(self, access, user_id, workspace_id, request_id, operation, record_id, version, changes):
+        return self._data_request('POST','/rest/v1/rpc/workspace_mutate',access,
+          {'request_id':request_id,'target_workspace':workspace_id,'operation':operation,
+           'record_id':user_id if operation=='profile.update' else record_id,'expected_version':version,'changes':changes})

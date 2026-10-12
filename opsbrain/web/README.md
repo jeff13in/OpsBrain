@@ -70,7 +70,7 @@ and its independent protection remain pending in OPU-91.
 
 ## Safety and limits
 
-The build copies exactly thirteen public assets, including the account, guard and workspace modules,
+The build copies exactly fourteen public assets, including the account, guard, workspace and persistence modules,
 not the backend/environment tree.
 Unknown existing build outputs cause a failure instead of deleting user files.
 Never put provider keys, database credentials, access tokens or private
@@ -349,10 +349,29 @@ scope and returns no-store responses. Requests are bounded; failed/expired reads
 navigation and logout clear private data instead of retaining a previous user's
 view. No mock personalization is supplied when the backend is absent.
 
-Projects are read-only. Profile/preferences editing, account saved work and the
-complete activity feed show explicit unavailable states until persistence work
-ships. Help uses built-in explanations and the existing beta access owner; it
+OPU-97 now adds project/profile/preferences writes and account saved demo
+investigations when the matching migration and APIs are available. Older/unconfigured
+providers keep those controls unavailable. The complete activity feed remains
+unavailable. Help uses built-in explanations and the existing beta access owner; it
 does not invent a support email or send messages. Live integrations stay gated.
 The static preview still lacks real provider sign-in. See
 [the workspace UI contract](../docs/client-workspace-ui.md) and
 [OPU-96 evidence](../validation/OPU-96.md) for current verification and open gates.
+
+## OPU-97 account persistence
+
+Authorized Projects supports create, rename, paginated list/read and explicit
+deletion. Project deletion also deletes child account investigations. Settings
+saves display name, start-page and reduced-motion preferences. Completed demo
+chat can be explicitly saved into a project, then reopened from account saved
+work with its sources and per-agent outcomes. Saved-work titles can be updated
+and records deleted; reopening does not copy private saved content into browser
+demo history. Account records remain until deletion, independent of session/demo
+expiry. Live investigations remain unavailable until tenant isolation is verified.
+
+Writes use user-JWT/RLS transactions, exact Origin/CSRF, immutable ownership,
+expected versions and stable request UUIDs. A failed save can retry the same
+command; conflicts require a reload. Deleted IDs cannot be recreated by old
+retries. Records and pending commands clear on navigation/logout. This increment
+adds no fake save fallback or browser storage for account records.
+See [persistence contracts, limits and deletion](../docs/workspace-persistence.md).

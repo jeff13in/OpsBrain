@@ -4,6 +4,11 @@ Local implementation, October 12, 2026. Free-only budget preserved. The client
 shell requires OPU-95 session authorization and an authorized workspace summary;
 an absent backend provides loading/error views rather than fabricated client data.
 
+OPU-97 supersedes the initial read-only availability below: when migration 003
+and its APIs are present, Projects and Settings enable validated writes and saved
+demo investigations. Live tools and the complete activity feed remain disabled.
+See [current persistence contract](workspace-persistence.md).
+
 ## Routes and availability
 
 | Hash route suffix under #/workspace/ | Behavior |

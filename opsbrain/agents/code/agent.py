@@ -270,41 +270,76 @@ class CodeAgent:
                 "sources": [f"github:pull/{number}"],
                 "data": status,
             }
-        if "commit" in q:
-            data = self.list_commits()
-            lines = [f"{c['sha'][:7]} {c['message']}" for c in data["commits"][:5]]
-            answer = (
-                f"{data['count']} recent commit(s) — " + "; ".join(lines)
-                if lines
-                else "No commits found."
-            )
-            return {"answer": answer, "sources": ["github:commits"], "data": data}
-        if "deploy" in q:
-            data = self.list_deployments()
-            lines = [f"{d['environment']}@{d['sha'][:7]}" for d in data["deployments"][:5]]
-            answer = (
-                f"{data['count']} recent deployment(s) — " + "; ".join(lines)
-                if lines
-                else "No deployments found."
-            )
-            return {"answer": answer, "sources": ["github:deployments"], "data": data}
-        if "ci" in q or "pipeline" in q or "workflow" in q or "build" in q or "action" in q:
-            summary = self.summarize_ci()
-            lines = [
-                f"{wf['workflow_name']}: {wf['conclusion'] or wf['status']}"
-                for wf in summary["workflows"]
-            ]
-            answer = (
-                "Latest workflow runs — " + "; ".join(lines)
-                if lines
-                else "No workflow runs found."
-            )
-            return {"answer": answer, "sources": ["github:actions/runs"], "data": summary}
+        # Answer every topic the question mentions (open PRs by default). Word
+        # boundaries keep "procedure" from matching PRs and "check firing
+        # alerts" from matching CI. `data` is keyed by topic when several match.
+        wants_pr_checks = bool(re.search(r"\b(?:checks?|status|ci)\b", q))
+        topics = [
+            ("commits", r"\bcommits?\b", self.list_commits, self._format_commits, "github:commits"),
+            ("deployments", r"\bdeploy", self.list_deployments, self._format_deployments, "github:deployments"),
+            ("ci", r"\b(?:ci|pipelines?|workflows?|builds?|actions?)\b", self.summarize_ci, self._format_ci,
+             "github:actions/runs"),
+            ("pulls", r"\b(?:prs?|pull requests?|pulls?)\b",
+             lambda: self._open_pulls_with_checks(wants_pr_checks), self._format_pulls, "github:pulls"),
+        ]
+        wanted = [t for t in topics if re.search(t[1], q)] or topics[-1:]
+        if len(wanted) > 1 and any(name == "ci" for name, *_ in wanted):
+            wants_pr_checks = False  # the CI topic already reports run status
 
-        # default: open PR count
+        answers, sources, data, failed = [], [], {}, []
+        for name, _, fetch, fmt, source in wanted:
+            try:
+                data[name] = fetch()
+            except CodeClientError:
+                if len(wanted) == 1:
+                    raise
+                failed.append(name)
+                continue
+            answers.append(fmt(data[name]))
+            sources.append(source)
+        if not answers:
+            raise CodeClientError("No GitHub backend could be queried.")
+        answers += [f"Couldn't read {name} from GitHub." for name in failed]
+        payload = data[wanted[0][0]] if len(wanted) == 1 else data
+        return {"answer": " ".join(answers), "sources": sources, "data": payload}
+
+    def _open_pulls_with_checks(self, include_checks: bool) -> dict[str, Any]:
         pulls = self.list_pull_requests(state="open")
-        answer = f"{pulls['count']} open pull request(s) on {pulls['repo']}."
-        return {"answer": answer, "sources": ["github:pulls"], "data": pulls}
+        if include_checks:
+            for pr in pulls["pull_requests"][:3]:  # bounded: one checks call per PR
+                try:
+                    pr["ci"] = self.get_pull_request_status(pr["number"])["overall"]
+                except CodeClientError:
+                    pr["ci"] = "unknown"
+        return pulls
+
+    @staticmethod
+    def _format_commits(data: dict[str, Any]) -> str:
+        lines = [f"{c['sha'][:7]} {c['message']}" for c in data["commits"][:5]]
+        return f"{data['count']} recent commit(s) — " + "; ".join(lines) + "." if lines else "No commits found."
+
+    @staticmethod
+    def _format_deployments(data: dict[str, Any]) -> str:
+        lines = [f"{d['environment']}@{d['sha'][:7]}" for d in data["deployments"][:5]]
+        return f"{data['count']} recent deployment(s) — " + "; ".join(lines) + "." if lines else "No deployments found."
+
+    @staticmethod
+    def _format_ci(data: dict[str, Any]) -> str:
+        lines = [
+            f"{wf['workflow_name']} on {wf['branch']}: {wf['conclusion'] or wf['status']}"
+            for wf in data["workflows"]
+        ]
+        return "Latest workflow runs — " + "; ".join(lines) + "." if lines else "No workflow runs found."
+
+    @staticmethod
+    def _format_pulls(data: dict[str, Any]) -> str:
+        if not data["pull_requests"]:
+            return f"No open pull requests on {data['repo']}."
+        lines = [
+            f"#{pr['number']} {pr['title']} ({pr['branch']}" + (f", CI {pr['ci']}" if "ci" in pr else "") + ")"
+            for pr in data["pull_requests"][:5]
+        ]
+        return f"{data['count']} open pull request(s) on {data['repo']} — " + "; ".join(lines) + "."
 
     # ── internals ─────────────────────────────────────────────────────────
 

@@ -1076,6 +1076,9 @@ With the opt-in Kafka overlay (`docker compose -f docker-compose.yml -f docker-c
 agent calls travel over Kafka instead of HTTP; see `orchestrator/CONTRACT.md` §3a. The OPU-51 live run on
 the real broker (all four agents in one question, a stopped agent timing out at 30s, a restarted agent skipping
 the request it missed, 8 concurrent `/ask`s) is recorded in [`validation/OPU-51.md`](validation/OPU-51.md).
+The Week 3 live acceptance (OPU-100–103: real broker, Groq/Gemini, pgvector corpus, a real
+Kubernetes cluster and GitHub repository; AWS deferred) is recorded in
+[`validation/OPU-103.md`](validation/OPU-103.md), with setup evidence in `OPU-100.md`–`OPU-102.md`.
 
 ### Calling Infra and Code directly
 
@@ -1091,8 +1094,9 @@ Invoke-RestMethod -Uri http://localhost:8004/query -Method Post -ContentType "ap
 
 Verified directly against `orchestrator/graph.py` and `orchestrator/router.py`:
 
-- Infra and Code need real backend configuration: a reachable Kubernetes cluster
-  and a selected GitHub repository. These cannot be inferred from the migration.
+- Infra and Code have been validated live against a local Kubernetes cluster and
+  `jeff13in/OpsBrain` (OPU-101/102). AWS (EC2/EKS/RDS) has not been validated with
+  real data, and Code has only been exercised unauthenticated on a public repo.
 - Conversation history is in-process; multiple orchestrator replicas need
   sticky sessions or a shared memory store.
 - Kafka is now integrated as an opt-in transport; production authentication/TLS

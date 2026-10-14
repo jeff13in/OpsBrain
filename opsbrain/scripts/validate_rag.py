@@ -9,6 +9,7 @@ Reingests the selected directory twice (replacing its existing source chunks).
 import argparse
 import json
 import sys
+import time
 from collections import Counter
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -60,6 +61,10 @@ def validate(args):
     print("PASS: RAG API health")
 
     for attempt in (1, 2):
+        if attempt == 2 and args.pause_seconds:
+            # Free-tier Gemini embeddings allow 100 requests/minute; a full
+            # docs/ ingest uses one per chunk, so two back-to-back runs exceed it.
+            time.sleep(args.pause_seconds)
         result = request(args.base_url, "/ingest", {"directory": args.api_directory})
         require(result.get("documents_processed") == len(sources), "Unexpected document count.")
         require(result.get("chunks_stored") == len(chunks), "Unexpected chunk count.")
@@ -89,6 +94,8 @@ def main():
     parser.add_argument("--api-directory", default="/app/data", help="Same runbooks visible to the API")
     parser.add_argument("--question", default="What should I do when CPU usage is high?")
     parser.add_argument("--expected-source", default="runbook-high-cpu.md")
+    parser.add_argument("--pause-seconds", type=float, default=0,
+                        help="Wait between the two ingests (e.g. 65 for free-tier embedding quotas)")
     args = parser.parse_args()
     args.base_url = args.base_url.rstrip("/")
     try:

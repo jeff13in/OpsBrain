@@ -515,10 +515,31 @@ class InfraAgent:
 
     @staticmethod
     def _format_health_summary(data: dict[str, Any]) -> str:
+        # Report what each passing check found, not just which ones failed, so a
+        # cluster without AWS credentials still gets a useful Kubernetes answer.
+        formatters = {
+            "ec2": InfraAgent._format_ec2_summary,
+            "eks": InfraAgent._format_eks,
+            "rds": InfraAgent._format_rds,
+            "nodes": InfraAgent._format_nodes,
+            "pods": InfraAgent._format_pods,
+            "deployments": InfraAgent._format_deployments,
+        }
+        details = []
+        for name, check in data["checks"].items():
+            if not check["ok"] or name not in formatters:
+                continue
+            try:
+                details.append(f"{name}: {formatters[name](check['data'])}")
+            except (KeyError, TypeError):
+                continue  # an unexpected payload shape shouldn't break the answer
         failed = [name for name, check in data["checks"].items() if not check["ok"]]
-        if not failed:
-            return f"Infra health: {data['overall']} — all checks passed."
-        return f"Infra health: {data['overall']} — failed checks: {', '.join(failed)}."
+        summary = f"Infra health: {data['overall']}"
+        if failed:
+            summary += f" — failed checks: {', '.join(failed)}"
+        else:
+            summary += " — all checks passed"
+        return summary + "." + "".join(f" {detail}" for detail in details)
 
 
 def _aws_error(service: str, exc: Exception) -> InfraClientError:

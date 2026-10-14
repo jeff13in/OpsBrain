@@ -13,6 +13,8 @@ import httpx
 
 from shared.models import AskResponse
 
+ALL_AGENTS_QUESTION = "Explain the runbook procedure for firing alerts, EC2 infrastructure and recent commits."
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -20,6 +22,8 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--all-agents", action="store_true",
                         help="Also require successful RAG/Monitoring/Infra/Code fan-out; needs configured real backends.")
+    parser.add_argument("--all-agents-question", default=ALL_AGENTS_QUESTION,
+                        help="Four-agent question; change it when Infra has Kubernetes but no AWS access.")
     args = parser.parse_args()
     checks = []
     with httpx.Client(timeout=120) as client:
@@ -35,8 +39,7 @@ def main():
             ("Check firing alerts and explain the documented troubleshooting procedure.", ["rag", "monitoring"]),
         ]
         if args.all_agents:
-            questions.append(("Explain the runbook procedure for firing alerts, EC2 infrastructure and recent commits.",
-                              ["rag", "monitoring", "infra", "code"]))
+            questions.append((args.all_agents_question, ["rag", "monitoring", "infra", "code"]))
         for question, agents in questions:
             started = time.monotonic()
             try:
@@ -53,7 +56,7 @@ def main():
             except (httpx.HTTPError, ValueError) as exc:
                 checks.append({"name": "ask", "question": question, "status": "failed", "error_type": type(exc).__name__})
     report = {"timestamp": datetime.now(UTC).isoformat(), "mode": "live-services-and-providers",
-              "transport": args.transport, "note": "Transport selected externally in Compose; no simulated backend summaries.",
+              "transport": args.transport, "questions": [q for q, _ in questions], "note": "Transport selected externally in Compose; no simulated backend summaries.",
               "checks": checks}
     Path(args.output).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     for check in checks:

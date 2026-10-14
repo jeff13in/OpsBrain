@@ -1,0 +1,202 @@
+{
+ "requests": 12,
+ "total_seconds": 2.12,
+ "all_matched": true,
+ "results": [
+  {
+   "i": 0,
+   "expected_agent": "rag",
+   "expected_source": "runbook-high-cpu.md",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "rag"
+   ],
+   "method": "llm",
+   "sources": [
+    "runbook-high-cpu.md",
+    "observability.md"
+   ],
+   "seconds": 1.98,
+   "matched": true
+  },
+  {
+   "i": 1,
+   "expected_agent": "monitoring",
+   "expected_source": "alertmanager:alerts",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "monitoring"
+   ],
+   "method": "llm",
+   "sources": [
+    "alertmanager:alerts"
+   ],
+   "seconds": 0.63,
+   "matched": true
+  },
+  {
+   "i": 2,
+   "expected_agent": "infra",
+   "expected_source": "kubernetes:nodes",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "infra"
+   ],
+   "method": "llm",
+   "sources": [
+    "kubernetes:nodes"
+   ],
+   "seconds": 0.66,
+   "matched": true
+  },
+  {
+   "i": 3,
+   "expected_agent": "code",
+   "expected_source": "github:commits",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "code"
+   ],
+   "method": "llm",
+   "sources": [
+    "github:commits"
+   ],
+   "seconds": 1.07,
+   "matched": true
+  },
+  {
+   "i": 4,
+   "expected_agent": "rag",
+   "expected_source": "runbook-high-cpu.md",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "rag"
+   ],
+   "method": "llm",
+   "sources": [
+    "runbook-high-cpu.md",
+    "observability.md"
+   ],
+   "seconds": 2.1,
+   "matched": true
+  },
+  {
+   "i": 5,
+   "expected_agent": "monitoring",
+   "expected_source": "alertmanager:alerts",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "monitoring"
+   ],
+   "method": "llm",
+   "sources": [
+    "alertmanager:alerts"
+   ],
+   "seconds": 0.53,
+   "matched": true
+  },
+  {
+   "i": 6,
+   "expected_agent": "infra",
+   "expected_source": "kubernetes:nodes",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "infra"
+   ],
+   "method": "llm",
+   "sources": [
+    "kubernetes:nodes"
+   ],
+   "seconds": 0.63,
+   "matched": true
+  },
+  {
+   "i": 7,
+   "expected_agent": "code",
+   "expected_source": "github:commits",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "code"
+   ],
+   "method": "llm",
+   "sources": [
+    "github:commits"
+   ],
+   "seconds": 1.0,
+   "matched": true
+  },
+  {
+   "i": 8,
+   "expected_agent": "rag",
+   "expected_source": "runbook-high-cpu.md",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "rag"
+   ],
+   "method": "llm",
+   "sources": [
+    "runbook-high-cpu.md",
+    "observability.md"
+   ],
+   "seconds": 1.87,
+   "matched": true
+  },
+  {
+   "i": 9,
+   "expected_agent": "monitoring",
+   "expected_source": "alertmanager:alerts",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "monitoring"
+   ],
+   "method": "llm",
+   "sources": [
+    "alertmanager:alerts"
+   ],
+   "seconds": 0.7,
+   "matched": true
+  },
+  {
+   "i": 10,
+   "expected_agent": "infra",
+   "expected_source": "kubernetes:nodes",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "infra"
+   ],
+   "method": "llm",
+   "sources": [
+    "kubernetes:nodes"
+   ],
+   "seconds": 0.73,
+   "matched": true
+  },
+  {
+   "i": 11,
+   "expected_agent": "code",
+   "expected_source": "github:commits",
+   "http": 200,
+   "status": "ok",
+   "agents": [
+    "code"
+   ],
+   "method": "llm",
+   "sources": [
+    "github:commits"
+   ],
+   "seconds": 0.93,
+   "matched": true
+  }
+ ]
+}

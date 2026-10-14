@@ -13,7 +13,9 @@ class InfraAgentAwsTests(unittest.TestCase):
     def setUp(self) -> None:
         self.mock_aws = mock_aws()
         self.mock_aws.start()
-        self.agent = InfraAgent(InfraConfig(aws_region="us-east-1"))
+        # Point at a missing kubeconfig so a developer's real ~/.kube/config
+        # can't make the Kubernetes checks succeed.
+        self.agent = InfraAgent(InfraConfig(aws_region="us-east-1", kubeconfig_path="/nonexistent/kubeconfig"))
 
     def tearDown(self) -> None:
         self.mock_aws.stop()
@@ -71,6 +73,25 @@ class InfraAgentAwsTests(unittest.TestCase):
         self.assertTrue(summary["checks"]["rds"]["ok"])
         self.assertFalse(summary["checks"]["nodes"]["ok"])
         self.assertEqual(summary["overall"], "degraded")
+
+
+class InfraHealthFormatTests(unittest.TestCase):
+    def test_health_answer_includes_passing_checks_alongside_failures(self) -> None:
+        data = {
+            "overall": "degraded",
+            "checks": {
+                "ec2": {"ok": False, "error": "Infra backend check failed (HTTP 500)."},
+                "nodes": {"ok": True, "data": {"total_nodes": 1, "nodes": [{"ready": True}]}},
+                "pods": {"ok": True, "data": {"total_pods": 3, "status_breakdown": {"healthy": 3}}},
+            },
+        }
+
+        answer = InfraAgent._format_health_summary(data)
+
+        self.assertEqual(
+            answer,
+            "Infra health: degraded — failed checks: ec2. nodes: 1/1 node(s) ready. pods: 3 pod(s) — healthy: 3.",
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opsbrain-chat
+  labels:
+    {{- include "opsbrain.labels" . | nindent 4 }}
+data:
+  {{- range $key, $value := .Values.chat }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}

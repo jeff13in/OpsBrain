@@ -1,0 +1,160 @@
+# OpsBrain Helm values. One release per namespace: Service names are fixed
+# (orchestrator, rag-agent, …) because the Orchestrator's default agent URLs
+# and the ArgoCD application expect them.
+
+image:
+  # CI pushes ghcr.io/<owner>/opsbrain-<service>:<git sha> and :latest.
+  registry: ghcr.io/jeff13in
+  # Pin to a commit SHA in real environments; "latest" is for local trials.
+  tag: latest
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# kafka (default) or http. HTTP calls agents directly via their Services.
+transport: kafka
+kafka:
+  bootstrapServers: kafka:9092
+  # Single-broker dev/staging Kafka. Use a managed broker (e.g. MSK) in production.
+  dev:
+    enabled: false
+    image: bitnamilegacy/kafka:3.7
+    # Agents consume as one group per agent; replicas beyond the topic's
+    # partition count sit idle, so keep autoscaling maxReplicas <= partitions.
+    partitions: 3
+    storage: 10Gi
+    resources:
+      requests: { cpu: 250m, memory: 768Mi }
+      limits: { cpu: "1", memory: 1536Mi }
+
+# Model configuration shared by the Orchestrator and RAG (non-secret).
+chat:
+  LLM_BASE_URL: https://api.groq.com/openai/v1
+  LLM_MODEL_ROUTER: openai/gpt-oss-20b
+  LLM_MODEL_ANSWER: openai/gpt-oss-120b
+  LLM_MODEL_SYNTH: qwen/qwen3.8-27b
+  GOOGLE_EMBEDDING_MODEL: models/gemini-embedding-001
+
+# Secrets are never templated from values. Create this Secret out of band
+# (kubectl, External Secrets, Sealed Secrets) with the keys below; keys marked
+# optional may be omitted.
+secrets:
+  name: opsbrain-secrets
+  keys:
+    llmApiKey: llm-api-key            # Orchestrator, RAG
+    googleApiKey: google-api-key      # RAG embeddings
+    databaseUrl: database-url         # RAG pgvector (postgresql://…)
+    githubToken: github-token         # Code (optional)
+    grafanaApiToken: grafana-api-token  # Monitoring (optional)
+
+# Defaults applied to every service unless overridden below.
+defaults:
+  probes:
+    path: /health
+    # startupProbe gives slow imports (LangChain, Kafka connect) up to 2 minutes
+    # before liveness takes over, so liveness can stay strict.
+    startup: { periodSeconds: 5, failureThreshold: 24, timeoutSeconds: 3 }
+    liveness: { periodSeconds: 20, failureThreshold: 3, timeoutSeconds: 3 }
+    readiness: { periodSeconds: 10, failureThreshold: 3, timeoutSeconds: 3 }
+  podSecurityContext:
+    seccompProfile: { type: RuntimeDefault }
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities: { drop: [ALL] }
+
+services:
+  orchestrator:
+    enabled: true
+    image: opsbrain-orchestrator
+    port: 8000
+    replicas: 2
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 70
+    # Conversation history is in-process: keep a client on one replica.
+    sessionAffinity: ClientIP
+    env: {}
+
+  rag-agent:
+    enabled: true
+    image: opsbrain-rag
+    port: 8001
+    replicas: 1
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilizationPercentage: 70
+    env: {}
+
+  monitoring-agent:
+    enabled: true
+    image: opsbrain-monitoring
+    port: 8002
+    replicas: 1
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilizationPercentage: 70
+    env:
+      PROMETHEUS_BASE_URL: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+      GRAFANA_BASE_URL: http://kube-prometheus-stack-grafana.observability.svc.cluster.local
+      ALERTMANAGER_BASE_URL: http://kube-prometheus-stack-alertmanager.observability.svc.cluster.local:9093
+
+  infra-agent:
+    enabled: true
+    image: opsbrain-infra
+    port: 8003
+    replicas: 1
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilizationPercentage: 70
+    env:
+      AWS_REGION: us-east-1
+      KUBE_IN_CLUSTER: "true"
+    serviceAccount:
+      # Read-only access to pods, nodes, deployments and metrics.k8s.io.
+      create: true
+      name: opsbrain-infra-reader
+      # e.g. eks.amazonaws.com/role-arn for read-only AWS access via IRSA.
+      annotations: {}
+
+  code-agent:
+    enabled: true
+    image: opsbrain-code
+    port: 8004
+    replicas: 1
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPUUtilizationPercentage: 70
+    env:
+      GITHUB_REPO: jeff13in/OpsBrain
+
+# Only the Orchestrator is exposed outside the cluster.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  tls: []

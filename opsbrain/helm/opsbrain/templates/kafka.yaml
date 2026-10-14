@@ -1,0 +1,94 @@
+{{- if .Values.kafka.dev.enabled }}
+{{- $k := .Values.kafka.dev }}
+# Single-broker KRaft Kafka for dev/staging only (no auth/TLS). Matches the
+# Compose broker; auto-creates the agent request/reply topics.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  labels:
+    {{- include "opsbrain.labels" . | nindent 4 }}
+    {{- include "opsbrain.selectorLabels" (dict "name" "kafka") | nindent 4 }}
+spec:
+  serviceName: kafka-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "opsbrain.selectorLabels" (dict "name" "kafka") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opsbrain.labels" . | nindent 8 }}
+        {{- include "opsbrain.selectorLabels" (dict "name" "kafka") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 1001
+      containers:
+        - name: kafka
+          image: {{ $k.image }}
+          ports:
+            - { name: client, containerPort: 9092 }
+            - { name: controller, containerPort: 9093 }
+          env:
+            - { name: KAFKA_CFG_NODE_ID, value: "0" }
+            - { name: KAFKA_CFG_PROCESS_ROLES, value: "controller,broker" }
+            - { name: KAFKA_CFG_LISTENERS, value: "PLAINTEXT://:9092,CONTROLLER://:9093" }
+            - { name: KAFKA_CFG_ADVERTISED_LISTENERS, value: "PLAINTEXT://kafka:9092" }
+            - { name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP, value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT" }
+            - { name: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS, value: "0@kafka-0.kafka-headless:9093" }
+            - { name: KAFKA_CFG_CONTROLLER_LISTENER_NAMES, value: "CONTROLLER" }
+            - { name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE, value: "true" }
+            - { name: KAFKA_CFG_NUM_PARTITIONS, value: {{ $k.partitions | quote }} }
+          resources:
+            {{- toYaml $k.resources | nindent 12 }}
+          startupProbe:
+            tcpSocket: { port: client }
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            tcpSocket: { port: client }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: client }
+            periodSeconds: 20
+          volumeMounts:
+            - { name: kafka-data, mountPath: /bitnami/kafka }
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: {{ $k.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  labels:
+    {{- include "opsbrain.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "opsbrain.selectorLabels" (dict "name" "kafka") | nindent 4 }}
+  ports:
+    - { name: client, port: 9092, targetPort: client }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  labels:
+    {{- include "opsbrain.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  # The KRaft controller resolves itself (kafka-0.kafka-headless) before it
+  # can become Ready; without this its own DNS record never appears.
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "opsbrain.selectorLabels" (dict "name" "kafka") | nindent 4 }}
+  ports:
+    - { name: client, port: 9092, targetPort: client }
+    - { name: controller, port: 9093, targetPort: controller }
+{{- end }}

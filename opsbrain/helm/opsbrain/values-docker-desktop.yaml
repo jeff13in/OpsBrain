@@ -1,0 +1,17 @@
+# Local trial on Docker Desktop Kubernetes using images built by Compose:
+#   docker compose --profile full build orchestrator rag-agent monitoring-agent infra-agent code-agent
+#   (tag each opsbrain-<service>:latest as ghcr.io/jeff13in/opsbrain-<image>:local)
+# Postgres and Prometheus/Grafana/Alertmanager are reused from the Compose stack.
+image:
+  tag: local
+  pullPolicy: Never
+kafka:
+  dev:
+    enabled: true
+    storage: 1Gi
+services:
+  monitoring-agent:
+    env:
+      PROMETHEUS_BASE_URL: http://host.docker.internal:9090
+      GRAFANA_BASE_URL: http://host.docker.internal:3000
+      ALERTMANAGER_BASE_URL: http://host.docker.internal:9093

@@ -1,0 +1,7 @@
+apiVersion: v2
+name: opsbrain
+description: OpsBrain Orchestrator and agents (RAG, Monitoring, Infra, Code) for Kubernetes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords: [opsbrain, kafka, agents]

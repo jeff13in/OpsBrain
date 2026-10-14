@@ -1182,6 +1182,33 @@ Invoke-RestMethod "http://localhost:8004/actions/summary"
 Success: real data from that repo, rate-limited per §5. Public repos work
 without `GITHUB_TOKEN`.
 
+### Deploying to Kubernetes with Helm (OPU-54)
+
+`helm/opsbrain` packages the Orchestrator and all four agents: a Deployment
+and ClusterIP Service each, startup/readiness/liveness probes on `/health`,
+resource requests/limits, CPU-based HorizontalPodAutoscalers (Orchestrator
+2–5, RAG 1–3; others opt-in), a read-only ServiceAccount for the Infra Agent,
+an optional Ingress for the Orchestrator only, and an optional single-broker
+dev Kafka. It supersedes the raw manifests in `k8s/`.
+
+```bash
+# Secrets are never stored in values; create them out of band.
+kubectl create namespace opsbrain
+kubectl -n opsbrain create secret generic opsbrain-secrets \
+  --from-literal=llm-api-key=... --from-literal=google-api-key=... \
+  --from-literal=database-url=postgresql://... \
+  [--from-literal=github-token=...] [--from-literal=grafana-api-token=...]
+helm upgrade --install opsbrain helm/opsbrain -n opsbrain \
+  --set image.tag=<git sha pushed by CI> [--set kafka.dev.enabled=true]
+```
+
+Autoscaling needs metrics-server. Over Kafka each agent is one consumer group,
+so agent `maxReplicas` above the topic's partition count adds idle pods; the
+chart refuses to render that combination when `kafka.dev.enabled=true`. The
+Orchestrator Service uses `sessionAffinity: ClientIP` because conversation
+history is in-process. For a local trial on Docker Desktop, see
+`helm/opsbrain/values-docker-desktop.yaml` and [`validation/OPU-54.md`](validation/OPU-54.md).
+
 ---
 
 ## 8. Troubleshooting and development

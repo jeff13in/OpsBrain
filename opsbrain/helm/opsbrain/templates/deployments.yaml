@@ -1,0 +1,81 @@
+{{- $root := . -}}
+{{- range $name, $svc := .Values.services }}
+{{- if $svc.enabled }}
+{{- $probes := $root.Values.defaults.probes }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "opsbrain.labels" $root | nindent 4 }}
+    {{- include "opsbrain.selectorLabels" (dict "name" $name) | nindent 4 }}
+spec:
+  {{- if not $svc.autoscaling.enabled }}
+  replicas: {{ $svc.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "opsbrain.selectorLabels" (dict "name" $name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opsbrain.labels" $root | nindent 8 }}
+        {{- include "opsbrain.selectorLabels" (dict "name" $name) | nindent 8 }}
+      annotations:
+        # Roll pods when shared model configuration changes.
+        checksum/chat-config: {{ include (print $root.Template.BasePath "/configmap.yaml") $root | sha256sum }}
+    spec:
+      {{- with $root.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and $svc.serviceAccount $svc.serviceAccount.create }}
+      serviceAccountName: {{ $svc.serviceAccount.name }}
+      {{- else }}
+      # No Kubernetes API access needed: don't mount a token.
+      automountServiceAccountToken: false
+      {{- end }}
+      securityContext:
+        {{- toYaml $root.Values.defaults.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "opsbrain.image" (dict "root" $root "svc" $svc) }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+          env:
+            - name: AGENT_TRANSPORT
+              value: {{ $root.Values.transport | quote }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ $root.Values.kafka.bootstrapServers | quote }}
+            - name: OPSBRAIN_SERVICE
+              value: {{ $name | quote }}
+            {{- range $key, $value := $svc.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- with include "opsbrain.secretEnv" (dict "root" $root "name" $name) | trim }}
+            {{- . | nindent 12 }}
+            {{- end }}
+          {{- if or (eq $name "orchestrator") (eq $name "rag-agent") }}
+          envFrom:
+            - configMapRef:
+                name: opsbrain-chat
+          {{- end }}
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml $root.Values.defaults.securityContext | nindent 12 }}
+          startupProbe:
+            httpGet: { path: {{ $probes.path }}, port: http }
+            {{- toYaml $probes.startup | nindent 12 }}
+          livenessProbe:
+            httpGet: { path: {{ $probes.path }}, port: http }
+            {{- toYaml $probes.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: {{ $probes.path }}, port: http }
+            {{- toYaml $probes.readiness | nindent 12 }}
+{{- end }}
+{{- end }}

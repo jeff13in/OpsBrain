@@ -1,0 +1,15 @@
+OpsBrain {{ .Chart.AppVersion }} installed in namespace {{ .Release.Namespace }} (transport: {{ .Values.transport }}).
+
+Before pods become Ready, create the Secret "{{ .Values.secrets.name }}" with keys:
+  {{ .Values.secrets.keys.llmApiKey }}, {{ .Values.secrets.keys.googleApiKey }}, {{ .Values.secrets.keys.databaseUrl }}
+  (optional) {{ .Values.secrets.keys.githubToken }}, {{ .Values.secrets.keys.grafanaApiToken }}
+
+Check status:
+  kubectl -n {{ .Release.Namespace }} get deploy,svc,hpa,pods
+Try the Orchestrator:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/orchestrator 8000:8000
+  curl -X POST localhost:8000/ask -H 'content-type: application/json' -d '{"question":"Are any alerts firing?"}'
+{{- if not .Values.kafka.dev.enabled }}
+
+kafka.dev.enabled=false: agents expect a broker at {{ .Values.kafka.bootstrapServers }}.
+{{- end }}

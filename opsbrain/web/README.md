@@ -70,17 +70,20 @@ and its independent protection remain pending in OPU-91.
 
 ## Safety and limits
 
-The build copies exactly fourteen public assets, including the account, guard, workspace and persistence modules,
+The build copies exactly seventeen public assets, including the account, guard, workspace and persistence modules,
 not the backend/environment tree.
 Unknown existing build outputs cause a failure instead of deleting user files.
 Never put provider keys, database credentials, access tokens or private
 operational fixtures in `public/`. Environment/config copying is not supported.
 Future frontend configuration must contain only public endpoint settings.
-Chat questions, answers and sources render as escaped plain text. Markdown and
-HTML are not interpreted; numbered citations focus local source entries.
+Questions and source labels render as escaped plain text. Answers support a bounded
+Markdown subset: bold text, inline code, unordered lists and fenced code blocks.
+HTML and links remain escaped text; code never creates citation buttons. Over
+20,000 characters or 400 lines falls back to escaped text. Numbered citations
+outside code focus local source entries.
 The default development CSP blocks network connections (`connect-src 'none'`).
 The optional localhost gateway permits same-origin requests (`connect-src 'self'`)
-to four allowlisted routes. CORS and localhost checks do not replace backend
+to six allowlisted routes. CORS and localhost checks do not replace backend
 authentication. Dev-server security headers are not automatically
 transferred to a static host. The document carries an interim CSP and referrer
 policy, but OPU-91 must still configure and verify HTTP host protections.
@@ -127,7 +130,8 @@ all-failed responses contain no successful sources or diagnosis.
 
 The renderer uses the backend response field names `status`, `answer`, `sources`
 and `results`, but this is not a connected API adapter. Questions, answers,
-source text and error messages are escaped. HTML and Markdown are plain text.
+source text and error messages are escaped. Answer formatting follows the bounded
+subset described above; raw HTML and external links are never interpreted.
 
 Up to 20 turns belong to each conversation. Completed turns save automatically
 in this browser. **New conversation** resets the active chat while retaining its
@@ -250,16 +254,42 @@ headers are not forwarded. Requests have deadlines and size limits, redirects
 are rejected, backend error prose is replaced with safe gateway messages, and
 API response schemas are validated before rendering. Partial and all-failed
 `AskResponse` results remain visible, including structured HTTP 502 responses.
-Live reply text and sources remain escaped plain text. Health reachability does
+Live answers use the same safe formatting subset; sources remain escaped text. Health reachability does
 not claim agent readiness or operational health.
 
 Live Monitoring has manual **Refresh live snapshots** for alerts and pod-phase
 counts. Failed snapshots remain unavailable alongside successful ones; no demo
 chart is substituted. These are API retrievals, and the backend may itself use
 demo exporters. CPU, memory and latency charts remain synthetic in Demo mode.
+Live charts now support manual retrieval of CPU, memory, p95 latency, preceding
+five-minute request/server-error counts and service scrape availability over
+15-minute/hour windows. The server owns the fixed PromQL presets; the browser
+cannot submit query text or upstream addresses. Missing metrics are unavailable;
+partial results remain visible and a failed refresh marks retained results stale.
+Exact-value tables expose UTC observation times separately from retrieval time.
+Navigation, hidden-page and mode changes discard pending operational responses.
+Demo mode adds labelled deterministic request/error/availability fixtures.
+
+Overview's **Refresh service status** checks five fixed health targets and reports
+reachable, unavailable or unconfigured. Dependency readiness remains unknown:
+existing health APIs do not verify providers, GitHub or cloud access. No internal
+upstream addresses or health metadata are returned to the browser. Optional local
+target overrides are `OPSBRAIN_WEB_RAG`, `OPSBRAIN_WEB_INFRA` and
+`OPSBRAIN_WEB_CODE`, defaulting to loopback ports 8001/8003/8004; existing
+Orchestrator/Monitoring defaults remain 8000/8002.
+
+New GET routes are `/api/status` and `/api/monitoring/series?range=15m|1h`.
+They enforce the same loopback Host/origin/method checks; series responses cap
+each metric at one series/61 samples and upstream responses at 200 KB.
+Refresh is manual, with no background requests or automatic provider retries.
 The static build contains the browser adapter, not this Node development gateway.
 Hosted use requires a separately protected same-origin gateway/API and host CSP,
 which belong to OPU-91; no production authentication is implemented here.
+
+Live transcript persistence remains disabled pending OPU-177's tenant/retention
+decision and isolation acceptance. Both browser-local Demo history and account
+Demo payload preparation reject explicitly Live turns. This does not implement
+Live storage or change the account retention policy.
 
 Automated local HTTP integration uses a contract-compatible test backend. Actual
 backend/model connectivity and browser visual/keyboard QA remain to be verified.

@@ -14,6 +14,9 @@ export const METRICS = Object.freeze([
   { id: 'cpu', title: 'CPU utilization', unit: '%', maximum: 100 },
   { id: 'memory', title: 'Memory utilization', unit: '%', maximum: 100 },
   { id: 'latency', title: 'Response latency (p95)', unit: 'ms', maximum: 500 },
+  { id: 'requests', title: 'Requests in preceding 5 minutes', unit: 'requests', maximum: 200 },
+  { id: 'errors', title: 'Server errors in preceding 5 minutes', unit: 'errors', maximum: 20 },
+  { id: 'availability', title: 'Service scrape availability', unit: '%', maximum: 100 },
 ]);
 
 export function sampleSnapshot(scenario, range, revision = 0) {
@@ -22,11 +25,14 @@ export function sampleSnapshot(scenario, range, revision = 0) {
     cpu: [42, 46, 44, 49, 53, 57, 51, 58, 61, 64, 66, 68],
     memory: [51, 51, 52, 54, 53, 56, 57, 56, 58, 60, 61, 62],
     latency: [120, 125, 118, 140, 145, 152, 170, 190, 210, 205, 240, 260],
+    requests: [80, 85, 90, 95, 100, 90, 105, 100, 115, 120, 125, 130],
+    errors: [0, 1, 0, 0, 2, 1, 1, 0, 2, 3, 2, 1],
+    availability: [100, 100, 100, 100, 100, 100, 80, 80, 100, 100, 100, 100],
   };
   const unavailable = ['empty', 'error', 'disconnected'].includes(scenario);
   return Object.fromEntries(METRICS.map(metric => [metric.id,
     unavailable || (scenario === 'partial' && metric.id === 'latency') ? [] : values[metric.id]
-      .map((value, index) => ({ minutesAgo: (11 - index) * 5, value: value + (revision % 2 ? (metric.id === 'latency' ? 10 : 2) : 0) }))
+      .map((value, index) => ({ minutesAgo: (11 - index) * 5, value: value + (revision % 2 ? (metric.id === 'availability' ? -2 : metric.id === 'latency' ? 10 : 2) : 0) }))
       .filter(point => range === '1h' || point.minutesAgo <= 15),
   ]));
 }

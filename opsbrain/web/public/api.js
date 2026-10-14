@@ -35,10 +35,12 @@ export function createApi({ request = fetch, onChange = () => {}, sessionId = ()
   let state = { mode: 'demo', pending: false, message: '', monitoring: null };
   let controller = new AbortController();
   let generation = 0;
+  let operationalGeneration = 0;
+  let operationalController = new AbortController();
   let session = null;
   async function json(path, options = {}, timeout = 15000) {
     const response = await request(`/api/${path}`, { ...options, credentials: 'omit', cache: 'no-store', redirect: 'error',
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(timeout)]), headers: { 'Content-Type': 'application/json' } });
+      signal: AbortSignal.any([controller.signal, ...(options.signal ? [options.signal] : []), AbortSignal.timeout(timeout)]), headers: { 'Content-Type': 'application/json' } });
     if (![200, 502].includes(response.status)) throw new Error('API request unavailable');
     const text = await response.text();
     if (text.length > 1000000) throw new Error('API response too large');
@@ -51,12 +53,70 @@ export function createApi({ request = fetch, onChange = () => {}, sessionId = ()
   }
   return {
     snapshot: () => structuredClone({ ...state, sessionActive: session !== null }),
+    leaveOperational() {
+      operationalController.abort(); operationalController = new AbortController(); operationalGeneration++;
+      state.statusPending = false; state.seriesPending = false;
+    },
     newSession() {
       controller.abort(); controller = new AbortController(); generation++;
       state.pending = false; state.monitoring = null;
       if (state.mode === 'live') session = sessionId();
     },
     disconnect(mode = 'disconnected') { reset(mode === 'demo' ? 'demo' : 'disconnected'); onChange(); },
+    async refreshStatus() {
+      if (state.mode !== 'live' || state.statusPending) return false;
+      const current = generation, operation = operationalGeneration; state.statusPending = true; onChange();
+      try {
+        const { body, status } = await json('status', { signal: operationalController.signal });
+        const names = ['orchestrator', 'rag', 'monitoring', 'infra', 'code'];
+        if (status !== 200 || !body || typeof body.retrievedAt !== 'string' || !Number.isFinite(Date.parse(body.retrievedAt)) ||
+          !Array.isArray(body.services) || body.services.length !== 5 || new Set(body.services.map(item => item.service)).size !== 5 ||
+          !body.services.every(item => names.includes(item.service) && ['reachable', 'unavailable', 'unconfigured'].includes(item.reachability) && item.readiness === 'unknown')) throw new Error('Invalid status');
+        if (current !== generation || operation !== operationalGeneration) return false;
+        state.readiness = { retrievedAt: body.retrievedAt, stale: false,
+          services: body.services.map(item => ({ service: item.service, reachability: item.reachability, readiness: item.readiness })) };
+        state.statusMessage = '';
+      } catch {
+        if (current !== generation || operation !== operationalGeneration) return false;
+        if (state.readiness) state.readiness.stale = true;
+        state.statusMessage = 'Status retrieval failed. Retained results are stale.';
+      }
+      state.statusPending = false; onChange(); return true;
+    },
+    async refreshSeries(range = '15m') {
+      if (state.mode !== 'live' || state.seriesPending || !['15m', '1h'].includes(range)) return false;
+      const current = generation, operation = operationalGeneration; state.seriesPending = true; onChange();
+      if (state.series?.range !== range) state.series = null;
+      try {
+        const { body, status } = await json(`monitoring/series?range=${range}`, { signal: operationalController.signal });
+        const names = ['cpu', 'memory', 'latency', 'requests', 'errors', 'availability'];
+        const start = Date.parse(body?.start), end = Date.parse(body?.end);
+        if (status !== 200 || body?.range !== range || !Number.isFinite(start) || !Number.isFinite(end) || end - start !== (range === '15m' ? 900000 : 3600000) ||
+          typeof body.retrievedAt !== 'string' || !Number.isFinite(Date.parse(body.retrievedAt)) || !body.metrics || names.some(id => !Object.hasOwn(body.metrics, id))) throw new Error('Invalid series');
+        const samples = {};
+        for (const id of names) {
+          const row = body.metrics[id]; let previous = -Infinity;
+          if (!row || !['ok', 'unavailable'].includes(row.status) || !Array.isArray(row.points) || row.points.length > 61 ||
+            (row.status === 'ok') !== (row.points.length > 0)) throw new Error('Invalid metric');
+          samples[id] = row.points.map(point => {
+            const time = Date.parse(point.observedAt);
+            if (typeof point.observedAt !== 'string' || !Number.isFinite(time) || time < start || time > end || time <= previous ||
+              typeof point.value !== 'number' || !Number.isFinite(point.value) || point.value < 0 ||
+              (['cpu', 'memory', 'availability'].includes(id) && point.value > 100)) throw new Error('Invalid sample');
+            previous = time;
+            return { minutesAgo: (end - time) / 60000, value: point.value, observedAt: point.observedAt };
+          });
+        }
+        if (current !== generation || operation !== operationalGeneration) return false;
+        state.series = { range, samples, retrievedAt: body.retrievedAt, start: body.start, end: body.end, stale: false };
+        state.seriesMessage = '';
+      } catch {
+        if (current !== generation || operation !== operationalGeneration) return false;
+        if (state.series) state.series.stale = true;
+        state.seriesMessage = 'Time-series retrieval failed. Retained results are stale; no Demo fallback was used.';
+      }
+      state.seriesPending = false; onChange(); return true;
+    },
     async connect() {
       reset('connecting'); onChange();
       const current = generation;

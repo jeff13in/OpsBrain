@@ -141,6 +141,6 @@ test('monitoring rendering discloses provenance and hides charts for unavailable
     assert.match(html, /All chart values are synthetic/);
     assert.match(html, /not a backend observation time/);
     assert.doesNotMatch(html, /badge-live/);
-    assert.equal((html.match(/<polyline/g) || []).length, scenario === 'populated' ? 3 : scenario === 'partial' ? 2 : 0);
+    assert.equal((html.match(/<polyline/g) || []).length, scenario === 'populated' ? 6 : scenario === 'partial' ? 5 : 0);
   }
 });

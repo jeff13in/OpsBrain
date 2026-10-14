@@ -54,7 +54,11 @@ const api = createApi({ onChange() {
   const mode = api.snapshot().mode;
   const changed = mode !== apiMode;
   apiMode = mode;
-  if (changed || contentRoute() === 'monitoring') render();
+  if (changed || ['monitoring', 'dashboard'].includes(contentRoute())) {
+    const focused = document.activeElement?.id;
+    render();
+    if (focused?.startsWith('live-')) document.getElementById(focused)?.focus();
+  }
 } });
 const history = createHistory();
 let activeHistoryId = null;
@@ -172,6 +176,8 @@ function render(moveFocus = false) {
     }
   }
   document.querySelector('#live-monitoring-refresh')?.addEventListener('click', () => { void api.refreshMonitoring(); });
+  document.querySelector('#live-status-refresh')?.addEventListener('click', () => { void api.refreshStatus(); });
+  document.querySelector('#live-series-refresh')?.addEventListener('click', () => { void api.refreshSeries(document.querySelector('#live-series-range').value); });
   const section = landingSectionFromHash(window.location.hash);
   if (section) {
     const target = document.getElementById(section);
@@ -287,6 +293,7 @@ document.addEventListener('keydown', event => {
 });
 
 document.addEventListener('visibilitychange', () => {
+  if (document.hidden) api.leaveOperational();
   if (!document.hidden) refreshHistory();
   monitoring.setActive(contentRoute() === 'monitoring' && api.snapshot().mode === 'demo' && !document.hidden);
   if (!document.hidden && contentRoute() === 'monitoring') render();
@@ -305,6 +312,7 @@ setInterval(refreshHistory, 60000);
 
 let previousRoot = routeFromHash(window.location.hash);
 window.addEventListener('hashchange', () => {
+  api.leaveOperational();
   const nextRoot = routeFromHash(window.location.hash);
   const enteringClient = nextRoot === 'workspace' && previousRoot !== 'workspace';
   previousRoot = nextRoot;

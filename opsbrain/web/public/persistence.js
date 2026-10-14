@@ -4,6 +4,7 @@ export function accountPayload(turns) {
   if (!Array.isArray(turns) || !turns.length || turns.length > 20) return null;
   const clean = [];
   for (const turn of turns) {
+    if (turn?.mode === 'live') return null; // Live storage awaits tenant/retention acceptance.
     const r = turn?.response;
     if (turn.pending || !text(turn.question,2000) || turn.question.trim().length<5 || !r || !['ok','partial','error'].includes(r.status)
       || !text(r.answer,20000) || !Array.isArray(r.sources) || r.sources.length>20 || !r.sources.every(s=>text(s,2000))

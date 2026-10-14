@@ -275,3 +275,6 @@
   .account-reduced-motion * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
 }
+/* Answer formatting keeps long code readable without widening the page. */
+.chat-text pre { max-width: 100%; overflow: auto; white-space: pre; padding: 1rem; }
+.chat-text code { overflow-wrap: anywhere; }

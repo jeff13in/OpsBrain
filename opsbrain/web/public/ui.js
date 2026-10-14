@@ -149,7 +149,7 @@ function home(mode = 'demo') {
     <section class="landing-cta" aria-labelledby="cta-title"><div><p class="eyebrow">START WITH A CLEARER WORKSPACE</p><h2 id="cta-title">Make room for the signal.</h2><p>Explore the interface. The integrations come next.</p></div><a class="button primary" href="#/dashboard">Open engineer dashboard ${icon('arrow')}</a></section>`;
 }
 
-// Plain text only. Source numbers become local focus buttons, never HTML or URLs.
+// Source numbers become local focus buttons, never user-supplied HTML or URLs.
 export function citedText(text, sources, prefix) {
   return escapeHtml(text).replace(/\[(\d+)\]/g, (match, number) => {
     const index = Number(number);
@@ -158,10 +158,37 @@ export function citedText(text, sources, prefix) {
   });
 }
 
+// Bounded Markdown subset. Raw HTML and links remain text; generated markup
+// contains only fixed tags. Code spans/blocks never create citation buttons.
+export function formattedAnswer(text, sources, prefix) {
+  const value = String(text ?? '');
+  if (value.length > 20000 || value.split('\n').length > 400) return citedText(value, sources, prefix);
+  const inline = line => line.split(/(`[^`\n]+`)/g).map(part => {
+    if (part.startsWith('`') && part.endsWith('`')) return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
+    return part.split(/(\*\*[^*\n]+\*\*)/g).map(segment => segment.startsWith('**') && segment.endsWith('**')
+      ? `<strong>${citedText(segment.slice(2, -2), sources, prefix)}</strong>`
+      : citedText(segment, sources, prefix)).join('');
+  }).join('');
+  const output = []; let code = null; let list = false;
+  const endList = () => { if (list) { output.push('</ul>'); list = false; } };
+  for (const line of value.split('\n')) {
+    if (/^```[a-zA-Z0-9_-]*\s*$/.test(line)) {
+      endList();
+      if (code !== null) { output.push(`<pre tabindex="0"><code>${escapeHtml(code.join('\n'))}</code></pre>`); code = null; }
+      else code = [];
+    } else if (code !== null) code.push(line);
+    else if (/^[-*] /.test(line)) { if (!list) { output.push('<ul>'); list = true; } output.push(`<li>${inline(line.slice(2))}</li>`); }
+    else { endList(); if (line.trim()) output.push(`<p>${inline(line)}</p>`); }
+  }
+  endList();
+  if (code !== null) output.push(`<pre tabindex="0"><code>${escapeHtml(code.join('\n'))}</code></pre>`);
+  return output.join('');
+}
+
 export function chatResponse(response, turnIndex, mode = 'demo') {
   const prefix = `chat-source-${turnIndex}`;
   const labels = { ok: 'Complete', partial: 'Partial availability', error: 'Unavailable' };
-  return `<section class="chat-answer" aria-labelledby="chat-answer-${turnIndex}"><div class="chat-answer-heading"><h3 id="chat-answer-${turnIndex}" tabindex="-1">${mode === 'live' ? 'API answer' : 'Example answer'}</h3>${badge(mode === 'live' ? 'live' : 'demo', `${mode === 'live' ? 'Live' : 'Demo'} · ${labels[response.status] || 'Unavailable'}`)}</div><p class="chat-text">${citedText(response.answer, response.sources, prefix)}</p>
+  return `<section class="chat-answer" aria-labelledby="chat-answer-${turnIndex}"><div class="chat-answer-heading"><h3 id="chat-answer-${turnIndex}" tabindex="-1">${mode === 'live' ? 'API answer' : 'Example answer'}</h3>${badge(mode === 'live' ? 'live' : 'demo', `${mode === 'live' ? 'Live' : 'Demo'} · ${labels[response.status] || 'Unavailable'}`)}</div><div class="chat-text">${formattedAnswer(response.answer, response.sources, prefix)}</div>
     ${response.routing ? `<p class="form-help">Routing: ${escapeHtml(response.routing.method)} · ${escapeHtml(response.routing.agents.join(', '))}. ${escapeHtml(response.routing.reason)}</p>` : ''}
     ${response.sources.length ? `<h4>${mode === 'live' ? 'API sources' : 'Example sources'}</h4><ol class="chat-sources">${response.sources.map((source, index) => `<li id="${prefix}-${index + 1}" tabindex="-1">${escapeHtml(source)} <span class="small-label">${mode === 'live' ? 'API SOURCE' : 'SYNTHETIC SOURCE'}</span>${sourceDetails(source, mode)}</li>`).join('')}</ol>` : '<p class="form-help">No sources available for this response.</p>'}
     <h4>Per-agent results</h4><div class="chat-agent-results">${response.results.map(result => {
@@ -202,15 +229,20 @@ function historyPage(state = { records: [], persistent: true, warning: '' }, fil
     </section><p class="form-help">History belongs to this browser and address. Anyone using the same browser profile can read it. Only the latest 20 conversations are retained.</p><a href="#/chat" class="button secondary">Open demo chat ${icon('arrow')}</a>`;
 }
 
-export function metricChart(metric, points) {
-  const valid = Array.isArray(points) && points.length >= 2 && points.every(point => Number.isFinite(point.value) && point.value >= 0 && point.value <= metric.maximum && Number.isFinite(point.minutesAgo) && point.minutesAgo >= 0);
+export function metricChart(metric, points, mode = 'demo') {
+  const maximum = mode === 'live' && Array.isArray(points) && !['cpu', 'memory', 'availability'].includes(metric.id)
+    ? Math.max(metric.maximum, ...points.map(point => Number.isFinite(point.value) ? point.value : 0)) : metric.maximum;
+  const valid = Array.isArray(points) && points.length >= 2 && points.every(point => Number.isFinite(point.value) && point.value >= 0 && point.value <= maximum && Number.isFinite(point.minutesAgo) && point.minutesAgo >= 0);
   if (!valid) return emptyState('Metric unavailable', 'No valid samples for this metric. Missing values are not zero.', 'pulse');
   const id = `monitoring-${metric.id}`;
-  const coordinates = points.map((point, index) => `${40 + index * 520 / (points.length - 1)},${180 - point.value * 160 / metric.maximum}`).join(' ');
+  const span = points[0].minutesAgo - points.at(-1).minutesAgo;
+  if (span <= 0) return emptyState('Metric unavailable', 'Invalid observation order.', 'pulse');
+  const coordinates = points.map((point, index) => `${mode === 'live' && index && points[index - 1].minutesAgo - point.minutesAgo > 1.5 ? '"/><polyline class="chart-line" points="' : index ? ' ' : ''}${40 + (points[0].minutesAgo - point.minutesAgo) * 520 / span},${180 - point.value * 160 / maximum}`).join('');
   const latest = points.at(-1).value;
-  return `<p class="metric-value">${escapeHtml(latest)}<span>${escapeHtml(metric.unit)}</span><small>Latest synthetic sample</small></p>
-    <svg class="metric-chart" viewBox="0 0 600 225" role="img" aria-labelledby="${id}-title ${id}-description"><title id="${id}-title">${escapeHtml(metric.title)} · Demo</title><desc id="${id}-description">Synthetic samples from ${points[0].minutesAgo} minutes ago to now. Latest value ${latest} ${escapeHtml(metric.unit)}. Exact values are in the sample table below.</desc><path class="chart-grid" d="M40 20H560 M40 100H560 M40 180H560"/><text x="4" y="24">${metric.maximum}</text><text x="4" y="184">0</text><polyline class="chart-line" points="${coordinates}"/><text x="40" y="210">−${points[0].minutesAgo} min</text><text x="560" y="210" text-anchor="end">Now</text></svg>
-    <details class="chart-samples"><summary>View sample values</summary><table><caption>${escapeHtml(metric.title)} · synthetic samples (${escapeHtml(metric.unit)})</caption><thead><tr><th scope="col">Relative time</th><th scope="col">Value (${escapeHtml(metric.unit)})</th></tr></thead><tbody>${points.map(point => `<tr><th scope="row">${point.minutesAgo === 0 ? 'Now' : `${point.minutesAgo} min ago`}</th><td>${point.value}</td></tr>`).join('')}</tbody></table></details>`;
+  const provenance = mode === 'live' ? 'Live API' : 'Demo';
+  return `<p class="metric-value">${escapeHtml(latest)}<span>${escapeHtml(metric.unit)}</span><small>Latest ${mode === 'live' ? 'API' : 'synthetic'} sample</small></p>
+    <svg class="metric-chart" viewBox="0 0 600 225" role="img" aria-labelledby="${id}-title ${id}-description"><title id="${id}-title">${escapeHtml(metric.title)} · ${provenance}</title><desc id="${id}-description">${provenance} samples from ${points[0].minutesAgo} minutes ago to ${points.at(-1).minutesAgo} minutes ago. Latest value ${latest} ${escapeHtml(metric.unit)}. Exact values are in the sample table below.</desc><path class="chart-grid" d="M40 20H560 M40 100H560 M40 180H560"/><text x="4" y="24">${maximum}</text><text x="4" y="184">0</text><polyline class="chart-line" points="${coordinates}"/><text x="40" y="210">−${points[0].minutesAgo} min</text><text x="560" y="210" text-anchor="end">${points.at(-1).minutesAgo === 0 ? 'Now' : `−${points.at(-1).minutesAgo} min`}</text></svg>
+    <details class="chart-samples"><summary>View sample values</summary><table><caption>${escapeHtml(metric.title)} · ${mode === 'live' ? 'API' : 'synthetic'} samples (${escapeHtml(metric.unit)})</caption><thead><tr><th scope="col">${mode === 'live' ? 'Observation time (UTC)' : 'Relative time'}</th><th scope="col">Value (${escapeHtml(metric.unit)})</th></tr></thead><tbody>${points.map(point => `<tr><th scope="row">${mode === 'live' ? escapeHtml(point.observedAt) : point.minutesAgo === 0 ? 'Now' : `${point.minutesAgo} min ago`}</th><td>${point.value}</td></tr>`).join('')}</tbody></table></details>`;
 }
 
 function monitoringPage(state = { scenario: 'disconnected', range: '15m', pending: false, samples: null, refreshedAt: null, auto: false }) {
@@ -247,15 +279,19 @@ function liveChatPage(state, connection) {
 
 function liveMonitoringPage(state) {
   const data = state.monitoring;
+  const series = state.series;
+  const charts = `<section class="panel"><h2>Live time-series</h2><label for="live-series-range">Time window</label><select id="live-series-range"><option value="15m"${series?.range !== '1h' ? ' selected' : ''}>Last 15 minutes</option><option value="1h"${series?.range === '1h' ? ' selected' : ''}>Last hour</option></select><button id="live-series-refresh" type="button" class="button secondary"${state.mode !== 'live' || state.seriesPending ? ' disabled' : ''}>${state.seriesPending ? 'Fetching series…' : 'Refresh live charts'}</button><p class="form-help" role="status">${escapeHtml(state.seriesMessage || 'Manual refresh. Missing metrics remain unavailable. Backend exporters may contain demonstration data.')}</p></section>${series ? `<p class="form-help">${series.stale ? 'Stale · ' : ''}Retrieved ${escapeHtml(series.retrievedAt)} · observation window ${escapeHtml(series.start)} to ${escapeHtml(series.end)} UTC</p><div class="monitoring-grid">${METRICS.map(metric => `<section class="panel metric-panel"><div class="panel-heading"><h2>${metric.title}</h2>${badge(series.stale ? 'disconnected' : 'live', series.stale ? 'Stale API data' : 'Live API data')}</div>${metricChart(metric, series.samples[metric.id], 'live')}</section>`).join('')}</div>` : ''}`;
   return `${heading('LIVE MONITORING', 'Read the current context.', 'Read-only snapshots from the monitoring API. Backend demo exporters may supply these values.')}
-    <button type="button" class="button primary" id="live-monitoring-refresh"${state.pending || state.mode !== 'live' ? ' disabled' : ''}>${state.pending ? 'Refreshing API…' : 'Refresh live snapshots'}</button><p class="form-help">CPU, memory and latency charts are demo-only. Live snapshot refresh is manual. No demo values appear in this view.</p>
+    ${charts}<button type="button" class="button primary" id="live-monitoring-refresh"${state.pending || state.mode !== 'live' ? ' disabled' : ''}>${state.pending ? 'Refreshing API…' : 'Refresh live snapshots'}</button><p class="form-help">Live snapshot refresh is manual. No demo values appear in this view.</p>
     <div aria-busy="${state.pending}">${state.pending ? loadingState('Fetching live monitoring snapshots') : data ? `<p class="form-help">Retrieved at ${escapeHtml(data.observedAt)} · retrieval time, not metric observation time</p><div class="monitoring-grid"><section class="panel"><div class="panel-heading"><h2>Alerts</h2>${badge(data.alerts ? 'live' : 'disconnected')}</div>${data.alerts ? `<dl class="principles"><div><dt>Total alerts</dt><dd>${data.alerts.total}</dd></div><div><dt>Active</dt><dd>${data.alerts.active}</dd></div><div><dt>Suppressed</dt><dd>${data.alerts.suppressed}</dd></div></dl>` : emptyState('Alerts unavailable', 'The alert request failed or returned invalid data.', 'pulse')}</section><section class="panel"><div class="panel-heading"><h2>Pods</h2>${badge(data.pods ? 'live' : 'disconnected')}</div>${data.pods ? `<div class="metric-body"><p>Total pods: ${data.pods.total}</p><ul>${data.pods.phases.map(item => `<li>${escapeHtml(item.phase)}: ${item.total}</li>`).join('')}</ul></div>` : emptyState('Pod health unavailable', 'The pod request failed or returned invalid data.', 'layers')}</section></div>` : emptyState('No live snapshot yet', 'Connect live, then refresh. A successful connection does not establish monitoring availability.', 'pulse')}</div>`;
 }
 
 function liveDashboardPage(state) {
+  const readiness = state.readiness;
+  const status = `<section class="panel"><h2>Service reachability and readiness</h2><button id="live-status-refresh" type="button" class="button secondary"${state.mode !== 'live' || state.statusPending ? ' disabled' : ''}>${state.statusPending ? 'Checking services…' : 'Refresh service status'}</button><p role="status">${escapeHtml(state.statusMessage || 'Dependency readiness remains unknown until independently verified. Health does not imply all systems ready.')}</p>${readiness ? `<p>${readiness.stale ? 'Stale · ' : ''}Retrieved ${escapeHtml(readiness.retrievedAt)} · retrieval time only</p><ul>${readiness.services.map(item => `<li><strong>${escapeHtml(item.service)}</strong>: ${escapeHtml(item.reachability)} · dependency readiness: ${escapeHtml(item.readiness)}</li>`).join('')}</ul>` : '<p>No service status retrieved yet.</p>'}</section>`;
   return `${heading('ENGINEER WORKSPACE', 'Your API workspace.', 'Agent outcomes appear with each answer. No dashboard health is inferred.')}
     <section class="panel"><div class="panel-heading"><h2>API connection</h2>${badge(state.mode === 'live' ? 'live' : 'disconnected')}</div><div class="principles"><div>${icon('shield')}<p><strong>Status</strong><span>${escapeHtml(state.message || 'No connection status available.')}</span></p></div><div>${icon('clock')}<p><strong>Live session</strong><span>${state.sessionActive ? 'Active on this page. Questions continue the same conversation.' : 'No active session. Ask a question to start one.'}</span></p></div></div></section>
-    <div class="button-row"><a class="button primary" href="#/chat">Ask OpsBrain</a><a class="button secondary" href="#/monitoring">Monitoring snapshots</a></div>`;
+    ${status}<div class="button-row"><a class="button primary" href="#/chat">Ask OpsBrain</a><a class="button secondary" href="#/monitoring">Monitoring snapshots</a></div>`;
 }
 
 export function renderPage(id, options = {}) {

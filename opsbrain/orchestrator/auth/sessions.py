@@ -209,6 +209,10 @@ class SessionManager:
         return self.workspace_action(cookie, workspace_id, 'workspace_summary')
 
     def workspace_action(self, cookie, workspace_id, action, *args):
+        return self.authorized_action(cookie, workspace_id,
+            lambda access, user_id, scoped_workspace: getattr(self.provider, action)(access, user_id, scoped_workspace, *args))
+
+    def authorized_action(self, cookie, workspace_id, callback):
         principal = self.authenticate(cookie)
         if principal is None:
             raise InvalidIdentity()
@@ -221,4 +225,4 @@ class SessionManager:
             if record is None or now >= record.expires_at or now - record.last_seen_at >= self.idle_seconds:
                 raise InvalidIdentity()
             access, _ = self._tokens(record)
-            return getattr(self.provider, action)(access, principal.user_id, workspace_id, *args)
+            return callback(access, principal.user_id, workspace_id)

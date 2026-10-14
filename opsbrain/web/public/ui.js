@@ -1,5 +1,5 @@
 import { canExportInvestigation } from './investigation.js';
-import { sourcePassage } from './sources.js';
+import { sourcePassage, validatePassage } from './sources.js';
 import { HISTORY_TTL } from './history.js';
 import { AUTH_ROUTES } from './auth.js';
 import { WORKSPACE_SECTIONS } from './workspace.js';
@@ -359,4 +359,12 @@ export function validateDraft(value) {
   const text = String(value).trim();
   if (text.length > 2000) return 'Keep the draft within 2000 characters.';
   return text.length < 5 ? 'Please write at least five characters for a useful question.' : `Draft checked (${text.length} characters). Nothing was sent or saved.`;
+}
+
+// The future account source view consumes only validated retrieved passages.
+export function retrievedPassageDetails(value, sourceId) {
+  let context;
+  try { context = validatePassage(value, sourceId); } catch { context = null; }
+  if (!context?.available) return '<details class="chat-agent-result"><summary>Passage unavailable</summary><p class="form-help">The authorized retrieved passage is unavailable.</p></details>';
+  return `<details class="chat-agent-result"><summary>Read retrieved passage</summary><p class="form-help">Live retrieved passage${context.revision ? ` ? Revision: ${escapeHtml(context.revision)}` : ' ? Revision unavailable'}${context.observed_at ? ` ? Observed: ${escapeHtml(context.observed_at)}` : ' ? Observation time unavailable'}</p><p class="chat-text">${escapeHtml(context.passage)}</p></details>`;
 }

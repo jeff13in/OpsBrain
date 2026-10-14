@@ -254,7 +254,7 @@ function render(moveFocus = false) {
   document.querySelectorAll('[data-source-target]').forEach(button => {
     button.addEventListener('click', () => {
       const target = document.getElementById(button.dataset.sourceTarget);
-      openSourceTarget(target);
+      openSourceTarget(target, button);
     });
   });
   document.querySelector('#draft-form')?.addEventListener('submit', event => {

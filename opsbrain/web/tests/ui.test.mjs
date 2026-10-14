@@ -63,10 +63,10 @@ test('HTML and CSS include accessible responsive foundation hooks', async () => 
   assert.match(css, /max-width: 700px/); assert.match(css, /max-width: 430px/);
 });
 test('client has no network or credential calls and isolates persistent storage', async () => {
-  for (const name of ['app.js', 'ui.js', 'demo.js', 'chat.js', 'monitoring.js', 'history.js', 'api.js', 'auth.js', 'route-guards.js', 'workspace.js', 'persistence.js', 'investigation.js', 'sources.js']) {
+  for (const name of ['app.js', 'ui.js', 'demo.js', 'chat.js', 'monitoring.js', 'history.js', 'api.js', 'auth.js', 'route-guards.js', 'workspace.js', 'persistence.js', 'investigation.js', 'sources.js', 'source-api.js']) {
     const source = await readFile(new URL(`../public/${name}`, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /\b(XMLHttpRequest|WebSocket|sessionStorage)\b/);
-    if (!['api.js', 'auth.js', 'route-guards.js', 'workspace.js', 'persistence.js'].includes(name)) assert.doesNotMatch(source, /\bfetch\b/);
+    if (!['api.js', 'auth.js', 'route-guards.js', 'workspace.js', 'persistence.js', 'source-api.js'].includes(name)) assert.doesNotMatch(source, /\bfetch\b/);
     if (name !== 'history.js') assert.doesNotMatch(source, /\blocalStorage\b/);
     assert.doesNotMatch(source, /LLM_API_KEY|GOOGLE_API_KEY|GITHUB_TOKEN|POSTGRES_PASSWORD/);
   }

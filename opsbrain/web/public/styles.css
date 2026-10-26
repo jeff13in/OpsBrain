@@ -242,6 +242,9 @@
   #auth-status { font-size: 14px; line-height: 1.6; }
   .auth-panel .button { width: 100%; margin-top: 12px; }
   .auth-panel button:disabled { opacity: .65; cursor: not-allowed; }
+  .auth-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0 0; color: var(--quiet); font-size: 12px; }
+  .auth-divider::before, .auth-divider::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+  .google-mark { flex: none; }
   .auth-links { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 20px; }
   .auth-links a { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; text-decoration: underline; }
   @media (max-width: 430px) { .auth-panel { padding: 20px; } }

@@ -163,3 +163,29 @@ test('request deadline ends pending state without leaking transport errors', asy
   assert.equal(auth.snapshot().pending, false);
   assert.match(auth.snapshot().message, /temporarily unavailable/);
 });
+
+test('Google sign-in link appears only when the server enables it, on login and signup', async () => {
+  const off = fixture();
+  await off.auth.load();
+  assert.doesNotMatch(renderPage('login', { authState: off.auth.snapshot() }).html, /auth-google/);
+  const on = fixture(undefined, { ...bootstrap, google_enabled: true });
+  await on.auth.load();
+  for (const id of ['login', 'signup']) {
+    const html = renderPage(id, { authState: on.auth.snapshot() }).html;
+    assert.match(html, /<a id="auth-google" class="button secondary google-button" href="\/auth\/google\/start">/);
+    assert.match(html, /aria-hidden="true"[^>]*>.*Continue with Google<\/a>/s);
+  }
+  for (const id of ['recovery', 'verification', 'password']) {
+    assert.doesNotMatch(renderPage(id, { authState: on.auth.snapshot() }).html, /auth-google/);
+  }
+  const loose = fixture(undefined, { ...bootstrap, google_enabled: 'true' });
+  await loose.auth.load();
+  assert.equal(loose.auth.snapshot().googleEnabled, false);
+});
+
+test('a failed Google return shows a generic status message', async () => {
+  const { auth } = fixture(undefined, { ...bootstrap, google_enabled: true });
+  await auth.load();
+  const html = renderPage('login', { authState: { ...auth.snapshot(), googleFailed: true } }).html;
+  assert.match(html, /Google sign-in did not complete/);
+});

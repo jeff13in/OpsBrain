@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 def private_path(path):
-    return path in ('/api/auth', '/api/workspaces', '/auth/callback') or path.startswith(('/api/auth/', '/api/workspaces/'))
+    return (path in ('/api/auth', '/api/workspaces', '/auth/callback')
+            or path.startswith(('/api/auth/', '/api/workspaces/', '/auth/google/')))
 
 
 class AccountResponsePolicy:

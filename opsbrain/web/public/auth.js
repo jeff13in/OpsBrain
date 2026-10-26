@@ -26,7 +26,7 @@ export function validateAuth(action, input = {}) {
 }
 
 export function createAuth({ fetcher = (...args) => globalThis.fetch(...args), onChange = () => {}, onLogin = () => {}, timeoutMs = 10000 } = {}) {
-  let state = { ready: false, pending: false, signupEnabled: false, recoveryAllowed: false, message: unavailable, email: '', errors: {} };
+  let state = { ready: false, pending: false, signupEnabled: false, recoveryAllowed: false, googleEnabled: false, message: unavailable, email: '', errors: {} };
   let csrf = '', generation = 0, controller;
   const emit = () => onChange();
   const snapshot = () => ({ ...state, errors: { ...state.errors } });
@@ -34,7 +34,7 @@ export function createAuth({ fetcher = (...args) => globalThis.fetch(...args), o
     generation++;
     controller?.abort();
     csrf = '';
-    state = { ready: false, pending: false, signupEnabled: false, recoveryAllowed: false, message: unavailable, email: '', errors: {} };
+    state = { ready: false, pending: false, signupEnabled: false, recoveryAllowed: false, googleEnabled: false, message: unavailable, email: '', errors: {} };
   }
   async function request(path, payload) {
     const requestController = new AbortController();
@@ -64,7 +64,7 @@ export function createAuth({ fetcher = (...args) => globalThis.fetch(...args), o
         || typeof body.recovery_allowed !== 'boolean' || typeof body.csrf_token !== 'string'
         || !/^[A-Za-z0-9_-]{32,256}$/.test(body.csrf_token)) throw new Error('Invalid bootstrap');
       csrf = body.csrf_token;
-      state = { ...state, ready: true, signupEnabled: body.signup_enabled, recoveryAllowed: body.recovery_allowed,
+      state = { ...state, ready: true, signupEnabled: body.signup_enabled, recoveryAllowed: body.recovery_allowed, googleEnabled: body.google_enabled === true,
         message: body.authenticated ? 'You are signed in.' : '' };
     } catch { if (current === generation) { csrf = ''; state = { ...state, ready: false, message: unavailable }; } }
     finally { if (current === generation) { state.pending = false; emit(); } }

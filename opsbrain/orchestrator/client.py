@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from orchestrator.auth.accounts import router as accounts_router
+from orchestrator.auth.google import router as google_router
 from orchestrator.auth.passages import router as passages_router
 from orchestrator.auth.persistence import router as persistence_router
 from orchestrator.auth.routes import router as auth_router
@@ -20,6 +21,7 @@ app.include_router(auth_router)
 app.include_router(persistence_router)
 app.include_router(passages_router)
 app.include_router(accounts_router)
+app.include_router(google_router)
 install_account_response_policy(app)
 
 ROOT = Path(__file__).resolve().parents[1] / 'web' / 'public'

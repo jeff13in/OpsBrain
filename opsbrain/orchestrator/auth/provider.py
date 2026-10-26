@@ -93,6 +93,10 @@ class SupabaseProvider:
     def verify(self, token_hash, kind):
         return self.token_pair(self._request('POST', '/auth/v1/verify', payload={'token_hash': token_hash, 'type': kind}))
 
+    def exchange_code(self, auth_code, code_verifier):
+        return self.token_pair(self._request('POST', '/auth/v1/token?grant_type=pkce',
+                                             payload={'auth_code': auth_code, 'code_verifier': code_verifier}))
+
     def password(self, access, password):
         self._request('PUT', '/auth/v1/user', access=access, payload={'password': password})
 

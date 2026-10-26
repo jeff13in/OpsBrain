@@ -84,6 +84,7 @@ def session(request: Request, boundary: Boundary, flows: Flows):
             if context is None:
                 flow = flows.issue()
             response = JSONResponse({'authenticated': False, 'signup_enabled': settings.beta_signup_enabled,
+                                     'google_enabled': settings.google_auth_enabled,
                                      'recovery_allowed': bool(context and context['user_id']),
                                      'csrf_token': flows.csrf(flow)}, headers={'Cache-Control': 'no-store'})
             set_flow_cookie(response, settings, flow, max_age=900 if context and context['user_id'] else 3600)
@@ -94,7 +95,7 @@ def session(request: Request, boundary: Boundary, flows: Flows):
         clear_cookie(response, settings)
         return response
     return JSONResponse({
-        'authenticated': True, 'verified': True, 'signup_enabled': False, 'recovery_allowed': False,
+        'authenticated': True, 'verified': True, 'signup_enabled': False, 'google_enabled': False, 'recovery_allowed': False,
         'csrf_token': manager.csrf_token(cookie), 'user_id': principal.user_id,
         'workspace_ids': list(principal.workspace_ids),
     }, headers={'Cache-Control': 'no-store'})

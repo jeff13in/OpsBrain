@@ -1,5 +1,6 @@
 """Durable anonymous/recovery contexts and atomic cross-replica auth limits."""
 
+import base64
 import hashlib
 import hmac
 import secrets
@@ -57,6 +58,16 @@ class PostgresAuthStore:
             conn.execute('delete from opsbrain_private.app_sessions where user_id=%s', (user,))
             conn.execute('delete from opsbrain_private.auth_flows where user_id=%s', (user,))
 
+    def put_oauth(self, key, verifier, expires):
+        with self.connection() as conn:
+            conn.execute('insert into opsbrain_private.oauth_states values (%s,%s,%s)', (key, verifier, expires))
+
+    def take_oauth(self, key, now):
+        # Consumed even when expired: a verifier is never usable twice.
+        with self.connection() as conn:
+            row = conn.execute('delete from opsbrain_private.oauth_states where state_hash=%s returning *', (key,)).fetchone()
+        return row['code_verifier'] if row and row['expires_at'] > now else None
+
     def rate(self, key, now, window, limit):
         start = now // window * window
         with self.connection() as conn:
@@ -69,6 +80,7 @@ class PostgresAuthStore:
     def cleanup(self, now):
         with self.connection() as conn:
             conn.execute('delete from opsbrain_private.auth_flows where expires_at<=%s', (now,))
+            conn.execute('delete from opsbrain_private.oauth_states where expires_at<=%s', (now,))
             conn.execute('delete from opsbrain_private.auth_rate_limits where window_start<%s', (now - 86400,))
             conn.execute('delete from opsbrain_private.app_sessions where expires_at<=%s or last_seen_at<=%s', (now, now - 86400))
 
@@ -97,6 +109,18 @@ class AccountFlows:
             cipher = self.manager._encrypt(key, access, refresh)
         self.store.put(key, user, cipher, expires)
         return cookie
+
+    def begin_oauth(self):
+        """Return (browser state cookie, S256 challenge); only the cookie hash is stored."""
+        state = secrets.token_urlsafe(32)
+        verifier = secrets.token_urlsafe(64)
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
+        self.store.put_oauth(SessionManager.cookie_hash(state), verifier, int(self.clock()) + 600)
+        return state, challenge
+
+    def take_oauth(self, cookie):
+        key = SessionManager.cookie_hash(cookie)
+        return self.store.take_oauth(key, int(self.clock())) if key else None
 
     def limit(self, ip, action, email=None):
         rules = [('global:' + action, 60, 100), ('ip:' + ip + ':' + action, 60, 20)]

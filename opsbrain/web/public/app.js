@@ -104,7 +104,7 @@ function render(moveFocus = false) {
     const records = historyFilter ? historyState.records.filter(record => record.turns[0].question.toLowerCase().includes(historyFilter.toLowerCase())) : historyState.records;
     historyState = { ...historyState, records, total };
   }
-  const page = renderPage(root, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState, historyFilter, connectionState: api.snapshot(), authState: auth.snapshot(), protectedState: accountSession.snapshot(), workspaceState: workspace.snapshot(), workspaceSection: workspaceSectionFromHash(window.location.hash), persistenceState:persistence.snapshot() });
+  const page = renderPage(root, { dashboardState: demoStateFromHash(window.location.hash), chatState: chat.snapshot(), monitoringState: monitoring.snapshot(), historyState, historyFilter, connectionState: api.snapshot(), authState: { ...auth.snapshot(), googleFailed: new URLSearchParams(window.location.hash.split('?')[1] || '').get('google') === 'failed' }, protectedState: accountSession.snapshot(), workspaceState: workspace.snapshot(), workspaceSection: workspaceSectionFromHash(window.location.hash), persistenceState:persistence.snapshot() });
   nav.innerHTML = root === 'workspace' ? clientNavigation(workspaceSectionFromHash(window.location.hash)) : navigation(route);
   const data = root === 'workspace' && accountSession.snapshot().status === 'authorized' ? workspace.snapshot().data : null;
   document.body?.classList.toggle('account-reduced-motion',Boolean(data?.profile.preferences?.reduced_motion));
